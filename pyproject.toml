@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "setuptools-git-metadata"
+version = "0.1.0.dev0"
+description = "Bake Git provenance into setuptools distributions without editing package sources"
+authors = [{name = "Nicholas Hairs", email = "info@nicholashairs.com"}]
+requires-python = ">=3.11"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENCE"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: Software Development :: Build Tools",
+]
+
+[project.scripts]
+setuptools-git-metadata = "setuptools_git_metadata.__main__:main"
+
+[project.urls]
+GitHub = "https://github.com/nhairs/setuptools-git-metadata"
+
+[dependency-groups]
+dev = [
+    "validate-pyproject[all]",
+    "black",
+    "pylint",
+    "pyrefly",
+    "pytest",
+    "build",
+    "setuptools>=80",
+    "packaging",
+    "uv",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["setuptools_git_metadata*"]
+
+[tool.setuptools.package-data]
+setuptools_git_metadata = ["runtime.py.txt"]
+
+[tool.black]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.pylint.main]
+py-version = "3.11"
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.messages_control]
+disable = ["missing-function-docstring", "missing-class-docstring", "too-few-public-methods"]

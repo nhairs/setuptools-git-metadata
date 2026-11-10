@@ -1,0 +1,34 @@
+
+import datetime as _datetime
+from importlib import resources as _resources
+
+def _load():
+    try:
+        raw = _resources.files(__package__).joinpath('_provenance.json').read_text(encoding='utf-8')
+    except FileNotFoundError:
+        return None
+    return _loads(raw)
+
+
+_data = _load()
+# Only an absent resource permits editable/local placeholders. Invalid data fails.
+PACKAGE_VERSION = _data['PACKAGE_VERSION'] if _data is not None else ''
+BUILD_VERSION = _data['BUILD_VERSION'] if _data is not None else ''
+BUILD_GIT_HASH = _data['BUILD_GIT_HASH'] if _data is not None else None
+BUILD_GIT_HASH_SHORT = _data['BUILD_GIT_HASH_SHORT'] if _data is not None else None
+BUILD_GIT_BRANCH = _data['BUILD_GIT_BRANCH'] if _data is not None else None
+BUILD_GIT_DIRTY = _data['BUILD_GIT_DIRTY'] if _data is not None else None
+BUILD_GIT_COMMIT_TIMESTAMP = _data['BUILD_GIT_COMMIT_TIMESTAMP'] if _data is not None else None
+SELECTED_SOURCE_DIGEST = _data['SELECTED_SOURCE_DIGEST'] if _data is not None else None
+SOURCE_TIMESTAMP = _data['SOURCE_TIMESTAMP'] if _data is not None else None
+BUILD_TIMESTAMP = _data['BUILD_TIMESTAMP'] if _data is not None else 0
+SDIST_BUILD_TIMESTAMP = _data['SDIST_BUILD_TIMESTAMP'] if _data is not None else None
+WHEEL_BUILD_TIMESTAMP = _data['WHEEL_BUILD_TIMESTAMP'] if _data is not None else None
+BUILD_DATETIME = _datetime.datetime.fromtimestamp(BUILD_TIMESTAMP, _datetime.timezone.utc).replace(tzinfo=None)
+
+# Project-owned display helpers remain ordinary committed Python source.
+VERSION_INFO_SHORT = f'{BUILD_VERSION}'
+VERSION_INFO = f'{BUILD_VERSION}@{BUILD_GIT_HASH_SHORT}'
+VERSION_INFO_LONG = f'{BUILD_VERSION} ({BUILD_GIT_BRANCH}@{BUILD_GIT_HASH_SHORT})'
+VERSION_INFO_FULL = (f'{PACKAGE_VERSION} ({BUILD_VERSION})\n'
+                     f'{BUILD_GIT_BRANCH}@{BUILD_GIT_HASH}\nBuilt: {BUILD_DATETIME}')
