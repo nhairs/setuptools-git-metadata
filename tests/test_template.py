@@ -14,11 +14,11 @@ from setuptools_git_metadata.template import standard_template
 
 def test_cli_exclusive_output(tmp_path):
     command = [sys.executable, "-m", "setuptools_git_metadata", "template"]
-    generated = subprocess.check_output(command)
-    assert generated.decode() == standard_template()
+    generated = subprocess.check_output(command, encoding="utf-8")
+    assert generated == standard_template()
     path = tmp_path / "_version.py"
     subprocess.run([*command, "--output", str(path)], check=True)
-    assert path.read_bytes() == generated
+    assert path.read_bytes() == generated.encode("utf-8")
     path.write_bytes(b"application owned")
     assert subprocess.run([*command, "--output", str(path)], capture_output=True).returncode != 0
     assert path.read_bytes() == b"application owned"

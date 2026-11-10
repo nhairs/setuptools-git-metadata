@@ -58,7 +58,8 @@ class ProjectMetadata:
                     stderr=subprocess.DEVNULL,
                     timeout=30,
                 )
-                paths = next(Path(td).glob("*.egg-info/SOURCES.txt")).read_text().splitlines()
+                manifest = next(Path(td).glob("*.egg-info/SOURCES.txt"))
+                paths = manifest.read_text(encoding="utf-8").splitlines()
                 return {
                     p
                     for p in paths

@@ -29,7 +29,7 @@ def test_selected_source_changes(project):
     for name in ("new.py", "with space.py", "café.py"):
         path = project / "src/example" / name
         path.write_text("# selected untracked", encoding="utf-8")
-        assert metadata.payload()["BUILD_GIT_DIRTY"] is True
+        assert metadata.payload()["BUILD_GIT_DIRTY"] is True, name
         path.unlink()
     template = project / "src/example/_version.py"
     template.write_bytes(template.read_bytes() + b'\nCUSTOM = "changed"\n')
