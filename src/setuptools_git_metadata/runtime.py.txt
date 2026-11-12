@@ -3,8 +3,9 @@ import datetime as _datetime
 from importlib import resources as _resources
 
 def _load():
+    """Load baked metadata, returning placeholders only when the resource is absent."""
     try:
-        raw = _resources.files(__package__).joinpath('_provenance.json').read_text(encoding='utf-8')
+        raw = _resources.files(__package__).joinpath('_git_metadata.json').read_text(encoding='utf-8')
     except FileNotFoundError:
         return None
     return _loads(raw)

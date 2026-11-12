@@ -99,12 +99,12 @@ def test_baked_priority_and_epoch_zero(project, tmp_path, monkeypatch):
     metadata = ProjectMetadata(project, "src/example")
     monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
     metadata.render(tmp_path / "first")
-    baked = _loads((tmp_path / "first/_provenance.json").read_text(encoding="utf-8"))
+    baked = _loads((tmp_path / "first/_git_metadata.json").read_text(encoding="utf-8"))
     assert baked["BUILD_GIT_DIRTY"] is False and baked["SOURCE_TIMESTAMP"] == 0
-    (project / "src/example/_provenance.json").write_text(json.dumps(baked), encoding="utf-8")
+    (project / "src/example/_git_metadata.json").write_text(json.dumps(baked), encoding="utf-8")
     monkeypatch.setenv("SOURCE_DATE_EPOCH", "100")
     metadata.render(tmp_path / "wheel", wheel=True)
-    rebuilt = _loads((tmp_path / "wheel/_provenance.json").read_text(encoding="utf-8"))
+    rebuilt = _loads((tmp_path / "wheel/_git_metadata.json").read_text(encoding="utf-8"))
     assert rebuilt["SOURCE_TIMESTAMP"] == rebuilt["SDIST_BUILD_TIMESTAMP"] == 0
     assert rebuilt["BUILD_TIMESTAMP"] == rebuilt["WHEEL_BUILD_TIMESTAMP"] == 100
     assert rebuilt["BUILD_GIT_HASH"] == baked["BUILD_GIT_HASH"]
@@ -124,7 +124,7 @@ def test_baked_priority_and_epoch_zero(project, tmp_path, monkeypatch):
 )
 def test_bool_is_not_timestamp_or_schema(project, tmp_path, field):
     ProjectMetadata(project, "src/example").render(tmp_path / "payload")
-    data = _loads((tmp_path / "payload/_provenance.json").read_text(encoding="utf-8"))
+    data = _loads((tmp_path / "payload/_git_metadata.json").read_text(encoding="utf-8"))
     data[field] = True
     with pytest.raises(ValueError):
         _validate(data)
@@ -172,8 +172,7 @@ def test_newline_filename_has_explicit_error(project):
 
 def test_absolute_package_directory_is_staged_as_relative(project):
     metadata = ProjectMetadata(project, project / "src/example")
-    assert not metadata.package_dir.is_absolute()
-    assert metadata.package_dir.as_posix() == "src/example"
+    assert metadata.package_dirs == [Path("src/example")]
 
 
 def test_automatic_commands_and_explicit_overrides(project, monkeypatch):
@@ -197,3 +196,28 @@ def test_unconfigured_project_keeps_commands(tmp_path, monkeypatch):
     assert "build_py" not in Distribution().cmdclass
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "unrelated"\n', encoding="utf-8")
     assert "build_py" not in Distribution().cmdclass
+
+
+def test_multiple_packages_preserve_one_baked_payload(project, tmp_path, monkeypatch):
+    other = project / "src/other"
+    other.mkdir()
+    (other / "__init__.py").touch()
+    metadata = ProjectMetadata(project, ["src/example", "src/other"])
+    epochs = iter((100, 200, 300))
+    monkeypatch.setattr(metadata, "event_time", lambda: next(epochs))
+    destinations = [tmp_path / "first", tmp_path / "second"]
+    metadata.render(destinations)
+    raw = (destinations[0] / "_git_metadata.json").read_bytes()
+    assert raw == (destinations[1] / "_git_metadata.json").read_bytes()
+    baked = _loads(raw.decode())
+    assert baked["SOURCE_TIMESTAMP"] == baked["BUILD_TIMESTAMP"] == 100
+
+    # A baked resource in any selected package takes precedence over live Git.
+    (other / "_git_metadata.json").write_bytes(raw)
+    assert metadata.payload() == baked
+    conflicting = dict(baked, BUILD_GIT_BRANCH="conflicting")
+    (project / "src/example/_git_metadata.json").write_text(
+        json.dumps(conflicting), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="between packages"):
+        metadata.payload()

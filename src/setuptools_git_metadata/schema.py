@@ -20,6 +20,7 @@ _FIELDS = (
 
 # Exact JSON types deliberately reject bool masquerading as an integer.
 def _validate(data):  # pylint: disable=too-many-branches
+    """Validate the complete provenance schema and return the original mapping."""
     if (
         not isinstance(data, dict)
         or (
@@ -67,6 +68,7 @@ def _validate(data):  # pylint: disable=too-many-branches
 
 
 def _unique_object(pairs):
+    """Build a JSON object while rejecting duplicate keys."""
     result = {}
     for key, value in pairs:
         if key in result:
@@ -76,6 +78,7 @@ def _unique_object(pairs):
 
 
 def _reject_constant(value):
+    """Reject JSON parser extensions for nonfinite numeric values."""
     raise ValueError("invalid JSON constant: " + value)
 
 

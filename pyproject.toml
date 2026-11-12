@@ -32,9 +32,6 @@ classifiers = [
 [project.entry-points."setuptools.finalize_distribution_options"]
 setuptools_git_metadata = "setuptools_git_metadata.setuptools:activate"
 
-[project.scripts]
-setuptools-git-metadata = "setuptools_git_metadata.__main__:main"
-
 [project.urls]
 GitHub = "https://github.com/nhairs/setuptools-git-metadata"
 
@@ -64,6 +61,3 @@ line-length = 100
 
 [tool.pylint.format]
 max-line-length = 100
-
-[tool.pylint.messages_control]
-disable = ["missing-function-docstring", "missing-class-docstring", "too-few-public-methods"]

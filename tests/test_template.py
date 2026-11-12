@@ -40,8 +40,8 @@ def test_runtime_absent_and_invalid_json(project, tmp_path):
     assert runtime(root).returncode == 0
     data_dir = tmp_path / "data"
     ProjectMetadata(project, "src/example").render(data_dir, wheel=True)
-    valid = json.loads((data_dir / "_provenance.json").read_text(encoding="utf-8"))
-    sidecar = root / "example/_provenance.json"
+    valid = json.loads((data_dir / "_git_metadata.json").read_text(encoding="utf-8"))
+    sidecar = root / "example/_git_metadata.json"
     for invalid in (
         "{bad",
         "{}",

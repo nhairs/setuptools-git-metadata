@@ -21,14 +21,22 @@ from .schema import _loads, _validate
 
 
 class ProjectMetadata:
-    def __init__(self, root, package_dir):
+    """Collect one source identity and stage it in the selected package directories."""
+
+    def __init__(self, root, package_dirs):
+        """Resolve package directories within the source root."""
         self.root = Path(root).resolve()
-        resolved = (self.root / package_dir).resolve()
-        if not resolved.is_relative_to(self.root):
-            raise ValueError("package directory must be inside source tree")
-        self.package_dir = resolved.relative_to(self.root)
+        if isinstance(package_dirs, (str, Path)):
+            package_dirs = [package_dirs]
+        self.package_dirs = []
+        for package_dir in package_dirs:
+            resolved = (self.root / package_dir).resolve()
+            if not resolved.is_relative_to(self.root):
+                raise ValueError("package directory must be inside source tree")
+            self.package_dirs.append(resolved.relative_to(self.root))
 
     def git(self, *args):
+        """Run a Git query in the source root and return stripped text."""
         return subprocess.check_output(
             ["git", *args], cwd=self.root, text=True, stderr=subprocess.DEVNULL, timeout=30
         ).strip()
@@ -44,6 +52,8 @@ class ProjectMetadata:
             raise ValueError(
                 "newline filenames cannot be represented safely by setuptools manifests"
             )
+
+        generated = {(path / "_git_metadata.json").as_posix() for path in self.package_dirs}
 
         def selected(root):
             with tempfile.TemporaryDirectory() as td:
@@ -67,9 +77,7 @@ class ProjectMetadata:
                 return {
                     p
                     for p in paths
-                    if ".egg-info/" not in p
-                    and p != (self.package_dir / "_provenance.json").as_posix()
-                    and (root / p).is_file()
+                    if ".egg-info/" not in p and p not in generated and (root / p).is_file()
                 }
 
         with tempfile.TemporaryDirectory() as td:
@@ -108,11 +116,13 @@ class ProjectMetadata:
             return bool(relevant), digest.hexdigest()
 
     def validate_baked(self, data, version):
+        """Validate baked metadata against the declared project version."""
         _validate(data)
         if data["PACKAGE_VERSION"] != version:
             raise ValueError("baked version disagrees with project.version")
 
     def validate_configuration(self):
+        """Return the authoritative static version or reject unsupported settings."""
         config = tomllib.loads((self.root / "pyproject.toml").read_text(encoding="utf-8"))
         if (
             config.get("tool", {}).get("setuptools-git-metadata", {}).get("version-mode", "static")
@@ -125,11 +135,18 @@ class ProjectMetadata:
         return version
 
     def payload(self, event=None):
+        """Preserve consistent baked metadata or collect live source identity."""
         version = self.validate_configuration()
-        baked = self.root / self.package_dir / "_provenance.json"
-        if baked.exists():
-            data = _loads(baked.read_text(encoding="utf-8"))
-            self.validate_baked(data, version)
+        data = None
+        for package_dir in self.package_dirs:
+            baked = self.root / package_dir / "_git_metadata.json"
+            if baked.exists():
+                candidate = _loads(baked.read_text(encoding="utf-8"))
+                self.validate_baked(candidate, version)
+                if data is not None and candidate != data:
+                    raise ValueError("baked metadata disagrees between packages")
+                data = candidate
+        if data is not None:
             return data
         now = self.event_time() if event is None else event
         try:
@@ -160,7 +177,8 @@ class ProjectMetadata:
             "SOURCE_TIMESTAMP": now,
         }
 
-    def render(self, directory, wheel=False):
+    def render(self, directories, wheel=False):
+        """Capture one artifact event and write identical metadata to each destination."""
         event = self.event_time()
         data = self.payload(event)
         data["WHEEL_BUILD_TIMESTAMP"] = event if wheel else None
@@ -170,13 +188,18 @@ class ProjectMetadata:
                 data["SDIST_BUILD_TIMESTAMP"] = event
         else:
             data.setdefault("SDIST_BUILD_TIMESTAMP", None)
-        directory.mkdir(parents=True, exist_ok=True)
         data["schema_version"] = 1
         _validate(data)
-        self.atomic_write(directory / "_provenance.json", json.dumps(data, sort_keys=True))
+        if isinstance(directories, Path):
+            directories = [directories]
+        content = json.dumps(data, sort_keys=True)
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
+            self.atomic_write(directory / "_git_metadata.json", content)
 
     @staticmethod
     def atomic_write(path, content):
+        """Replace a staged file atomically without changing linked source files."""
         # Replace copied files instead of editing a possibly hardlinked inode.
         with tempfile.NamedTemporaryFile(
             mode="w", encoding="utf-8", newline="", dir=path.parent, delete=False
@@ -194,6 +217,7 @@ class ProjectMetadata:
 
     @staticmethod
     def event_time():
+        """Return the current artifact epoch, respecting SOURCE_DATE_EPOCH."""
         raw = os.environ.get("SOURCE_DATE_EPOCH")
         if raw is None:
             return int(time.time())

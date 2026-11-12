@@ -25,9 +25,8 @@ version = "1.2.3"
 [tool.setuptools.packages.find]
 where = ["src"]
 [tool.setuptools.package-data]
-example = ["*.json", "data.txt", "py.typed"]
+example = ["data.txt", "py.typed"]
 [tool.setuptools-git-metadata]
-package = "example"
 """,
         encoding="utf-8",
     )
