@@ -28,9 +28,6 @@ where = ["src"]
 example = ["*.json", "data.txt", "py.typed"]
 [tool.setuptools-git-metadata]
 package = "example"
-[tool.setuptools.cmdclass]
-build_py = "setuptools_git_metadata.setuptools.build_py"
-sdist = "setuptools_git_metadata.setuptools.sdist"
 """,
         encoding="utf-8",
     )

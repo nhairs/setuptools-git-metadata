@@ -9,11 +9,18 @@ from .template import standard_template
 def main():
     """Print the loader or exclusively create a requested source file."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["template"])
-    parser.add_argument(
+    commands = parser.add_subparsers(dest="command", required=True)
+    template = commands.add_parser("template", help="write the standard runtime loader")
+    template.add_argument(
         "--output", type=Path, help="create a new file without overwriting an existing file"
     )
     args = parser.parse_args()
+    if args.command == "template":
+        write_template(args, parser)
+
+
+def write_template(args, parser):
+    """Write the selected template to stdout or a new file."""
     if args.output is None:
         sys.stdout.write(standard_template())
     else:

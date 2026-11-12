@@ -174,3 +174,26 @@ def test_absolute_package_directory_is_staged_as_relative(project):
     metadata = ProjectMetadata(project, project / "src/example")
     assert not metadata.package_dir.is_absolute()
     assert metadata.package_dir.as_posix() == "src/example"
+
+
+def test_automatic_commands_and_explicit_overrides(project, monkeypatch):
+    from setuptools import Distribution
+    from setuptools.command.build_py import build_py as BaseBuild
+
+    from setuptools_git_metadata.setuptools import build_py, sdist
+
+    monkeypatch.chdir(project)
+    automatic = Distribution()
+    assert automatic.cmdclass["build_py"] is build_py
+    assert automatic.cmdclass["sdist"] is sdist
+    custom = Distribution({"cmdclass": {"build_py": BaseBuild}})
+    assert custom.cmdclass["build_py"] is BaseBuild
+
+
+def test_unconfigured_project_keeps_commands(tmp_path, monkeypatch):
+    from setuptools import Distribution
+
+    monkeypatch.chdir(tmp_path)
+    assert "build_py" not in Distribution().cmdclass
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "unrelated"\n', encoding="utf-8")
+    assert "build_py" not in Distribution().cmdclass

@@ -2,7 +2,7 @@
 
 Bake Git provenance into setuptools distributions without generating or editing Python source in your checkout. The declared `project.version` remains authoritative. The build adapter writes a JSON resource into staged source distributions and wheels; a committed, customizable `_version.py` loads that resource at runtime.
 
-The build tool requires Python 3.11 or later, setuptools 80 or later, and Git when collecting source identity. The standard runtime loader requires Python 3.9 or later and uses only the standard library. An installed application does not need this build tool or Git.
+The build tool requires Python 3.10 or later, setuptools 80 or later, and Git when collecting source identity. Use a patched interpreter with tar extraction filters (Python 3.10.12+, 3.11.4+, or 3.12+). The standard runtime loader requires Python 3.9 or later and uses only the standard library. An installed application does not need this build tool or Git.
 
 ## Install from source
 
@@ -22,7 +22,7 @@ For example, replace the companion requirement in the following configuration wi
 
 ## Configure a consuming package
 
-Add the companion to `build-system.requires` and explicitly select its setuptools command classes:
+Add the companion to `build-system.requires` and configure the package that receives the provenance resource:
 
 ```toml
 [build-system]
@@ -42,15 +42,11 @@ example = ["_provenance.json"]
 [tool.setuptools-git-metadata]
 package = "example"
 version-mode = "static"
-
-[tool.setuptools.cmdclass]
-build_py = "setuptools_git_metadata.setuptools.build_py"
-sdist = "setuptools_git_metadata.setuptools.sdist"
 ```
 
 Replace `example` with a declared setuptools import package. The adapter resolves its source directory through setuptools, so the distribution name and import package do not need to match. This initial interface selects one package per project.
 
-Installing the companion does not activate global setuptools hooks. Projects that already override `build_py` or `sdist` need explicit command-class composition and validation.
+A setuptools distribution-finalization entry point registers the build commands when the project has a `[tool.setuptools-git-metadata]` table. Unconfigured projects retain their usual commands. Explicit custom `build_py` or `sdist` overrides take precedence and require command-class composition and validation.
 
 The `static` mode uses `project.version`; it does not calculate versions from tags. Other version modes are reserved and raise `NotImplementedError`. The JSON resource uses schema version 1.
 
@@ -113,7 +109,7 @@ uvx tox -e lint
 uvx tox
 ```
 
-The default tox matrix covers CPython 3.11–3.15. GitHub Actions runs it on Ubuntu, macOS, and Windows. Linting validates the project configuration, checks Black formatting at 100 columns, and runs Pylint and Pyrefly.
+The default tox matrix covers CPython 3.10–3.15 and PyPy 3.10–3.12. GitHub Actions runs it on Ubuntu, macOS, and Windows. Linting validates the project configuration, checks Black formatting at 100 columns, and runs Pylint and Pyrefly.
 
 Tests build actual wheels and source distributions, rebuild outside Git, install distributions into fresh virtual environments, exercise isolated builds with an actual companion wheel, and compare source filesystem inventories. They also cover editable placeholders, strict runtime resource validation, zip imports, shallow and detached Git, selected-input changes, source timestamps, and staged hardlink replacement.
 

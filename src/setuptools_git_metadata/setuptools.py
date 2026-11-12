@@ -1,15 +1,25 @@
-"""Explicit setuptools command adapters; no global activation."""
+"""Activate staged metadata commands for configured setuptools projects."""
 
 from pathlib import Path
-import tomllib
 from setuptools.command.build_py import build_py as BaseBuild
 from setuptools.command.sdist import sdist as BaseSdist
-from .core import ProjectMetadata
+from .core import ProjectMetadata, tomllib
+
+
+def activate(distribution):
+    """Register command adapters only when this project opts in."""
+    path = Path("pyproject.toml")
+    if not path.is_file():
+        return
+    config = tomllib.loads(path.read_text(encoding="utf-8"))
+    if "setuptools-git-metadata" in config.get("tool", {}):
+        distribution.cmdclass.setdefault("build_py", build_py)
+        distribution.cmdclass.setdefault("sdist", sdist)
 
 
 def project(command):
     root = Path.cwd()
-    config = tomllib.loads((root / "pyproject.toml").read_text())
+    config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     settings = config.get("tool", {}).get("setuptools-git-metadata", {})
     package = settings.get("package")
     if not isinstance(package, str) or not package:

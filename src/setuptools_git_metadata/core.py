@@ -11,7 +11,11 @@ import os
 from pathlib import Path
 import subprocess
 import time
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 
 from .schema import _loads, _validate
 
@@ -109,7 +113,7 @@ class ProjectMetadata:
             raise ValueError("baked version disagrees with project.version")
 
     def validate_configuration(self):
-        config = tomllib.loads((self.root / "pyproject.toml").read_text())
+        config = tomllib.loads((self.root / "pyproject.toml").read_text(encoding="utf-8"))
         if (
             config.get("tool", {}).get("setuptools-git-metadata", {}).get("version-mode", "static")
             != "static"

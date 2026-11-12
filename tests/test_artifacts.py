@@ -32,7 +32,7 @@ def environment_python(root):
 
 
 def install(wheel, root):
-    venv.EnvBuilder(with_pip=False).create(root)
+    venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt").create(root)
     python = environment_python(root)
     subprocess.run(
         ["uv", "pip", "install", "--python", str(python), "--no-deps", str(wheel)],
