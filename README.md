@@ -53,7 +53,7 @@ Import version information from an installed package:
 from example._version import PACKAGE_VERSION, BUILD_GIT_HASH
 ```
 
-Editable installs expose empty version strings, unavailable Git information and a build timestamp of zero.
+Without generated metadata, the loader exposes empty version strings, unavailable Git information and a build timestamp of zero. This includes editable installs from a development checkout.
 
 ## Available metadata
 
