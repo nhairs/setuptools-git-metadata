@@ -3,7 +3,7 @@
 from pathlib import Path
 from setuptools.command.build_py import build_py as BaseBuild
 from setuptools.command.sdist import sdist as BaseSdist
-from .core import ProjectMetadata, tomllib
+from .build import MetadataBuilder, tomllib
 
 
 def activate(distribution):
@@ -35,7 +35,7 @@ def project(command):
         if package not in declared:
             raise ValueError(f"configured package is not declared by setuptools: {package}")
     packages = list(dict.fromkeys(packages))
-    return packages, ProjectMetadata(root, [build.get_package_dir(p) for p in packages])
+    return packages, MetadataBuilder(root, [build.get_package_dir(p) for p in packages])
 
 
 class build_py(BaseBuild):  # pylint: disable=invalid-name

@@ -1,12 +1,12 @@
 [build-system]
-requires = ["setuptools>=80"]
+requires = ["setuptools>=80", "tomli>=2; python_version < '3.11'"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "setuptools-git-metadata"
 version = "0.1.0.dev0"
 description = "Bake Git provenance into setuptools distributions without editing package sources"
-authors = [{name = "Nicholas Hairs", email = "info@nicholashairs.com"}]
+authors = [{name = "Nicholas Hairs", email = "info+setuptools-git-metadata@nicholashairs.com"}]
 requires-python = ">=3.10"
 dependencies = [
     "setuptools>=80",
@@ -53,8 +53,7 @@ dev = [
 where = ["src"]
 include = ["setuptools_git_metadata*"]
 
-[tool.setuptools.package-data]
-setuptools_git_metadata = ["runtime.py.txt"]
+[tool.setuptools-git-metadata]
 
 [tool.black]
 line-length = 100

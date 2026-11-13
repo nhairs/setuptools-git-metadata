@@ -50,10 +50,17 @@ Build your distributions using your usual setuptools build command. Each selecte
 Import version information from an installed package:
 
 ```python
-from example._version import PACKAGE_VERSION, BUILD_GIT_HASH
+from example._version import BUILD_INFO
+
+print(BUILD_INFO.VERSION_INFO_SHORT)
+print(BUILD_INFO.BUILD_GIT_HASH)
 ```
 
-Without generated metadata, the loader exposes empty version strings, unavailable Git information and a build timestamp of zero. This includes editable installs from a development checkout.
+`BUILD_INFO` is a frozen `GitMetadata` instance. Its `VERSION_INFO_*` strings and `BUILD_DATETIME` are computed properties. Existing uppercase module imports remain available.
+
+To load another package explicitly, use `GitMetadata.from_package("package_name")`.
+
+Without generated metadata, string fields use `__metadata_missing__` and source/build timestamps are zero. Nullable fields, including unavailable branch and dirty state, remain `None`. This includes editable installs from a development checkout.
 
 ## Available metadata
 

@@ -7,13 +7,13 @@ import subprocess
 
 import pytest
 
-from setuptools_git_metadata.core import ProjectMetadata
-from setuptools_git_metadata.schema import _loads, _validate
+from setuptools_git_metadata.build import MetadataBuilder
+from setuptools_git_metadata.build import _loads, _validate
 from tests.conftest import inventory
 
 
 def test_selected_source_changes(project):
-    metadata = ProjectMetadata(project, "src/example")
+    metadata = MetadataBuilder(project, "src/example")
     before = inventory(project)
     original = metadata.payload()
     assert original["PACKAGE_VERSION"] == original["BUILD_VERSION"] == "1.2.3"
@@ -46,14 +46,14 @@ def test_detached_and_shallow(project, tmp_path):
         check=True,
         capture_output=True,
     )
-    metadata = ProjectMetadata(clone, "src/example")
+    metadata = MetadataBuilder(clone, "src/example")
     assert metadata.payload()["BUILD_GIT_DIRTY"] is False
     subprocess.run(["git", "checkout", "--detach"], cwd=clone, check=True, capture_output=True)
     assert metadata.payload()["BUILD_GIT_BRANCH"] is None
 
 
 def test_selector_failure_not_missing_git(project, monkeypatch):
-    metadata = ProjectMetadata(project, "src/example")
+    metadata = MetadataBuilder(project, "src/example")
 
     def failed():
         raise subprocess.CalledProcessError(1, ["selection"])
@@ -68,7 +68,7 @@ def test_hardlink_write_does_not_change_original(tmp_path):
     original.write_text("original", encoding="utf-8")
     staged = tmp_path / "staged.json"
     os.link(original, staged)
-    ProjectMetadata.atomic_write(staged, "replacement")
+    MetadataBuilder.atomic_write(staged, "replacement")
     assert original.read_text(encoding="utf-8") == "original"
     assert staged.read_text(encoding="utf-8") == "replacement"
 
@@ -77,7 +77,7 @@ def test_hardlink_write_does_not_change_original(tmp_path):
 def test_invalid_clock(invalid, monkeypatch):
     monkeypatch.setenv("SOURCE_DATE_EPOCH", invalid)
     with pytest.raises(ValueError, match="SOURCE_DATE_EPOCH"):
-        ProjectMetadata.event_time()
+        MetadataBuilder.build_timestamp()
 
 
 def test_unknown_mode_before_output(project, tmp_path):
@@ -91,12 +91,12 @@ def test_unknown_mode_before_output(project, tmp_path):
     )
     target = tmp_path / "not-created"
     with pytest.raises(NotImplementedError):
-        ProjectMetadata(project, "src/example").render(target)
+        MetadataBuilder(project, "src/example").render(target)
     assert not target.exists()
 
 
 def test_baked_priority_and_epoch_zero(project, tmp_path, monkeypatch):
-    metadata = ProjectMetadata(project, "src/example")
+    metadata = MetadataBuilder(project, "src/example")
     monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
     metadata.render(tmp_path / "first")
     baked = _loads((tmp_path / "first/_git_metadata.json").read_text(encoding="utf-8"))
@@ -123,7 +123,7 @@ def test_baked_priority_and_epoch_zero(project, tmp_path, monkeypatch):
     ],
 )
 def test_bool_is_not_timestamp_or_schema(project, tmp_path, field):
-    ProjectMetadata(project, "src/example").render(tmp_path / "payload")
+    MetadataBuilder(project, "src/example").render(tmp_path / "payload")
     data = _loads((tmp_path / "payload/_git_metadata.json").read_text(encoding="utf-8"))
     data[field] = True
     with pytest.raises(ValueError):
@@ -138,7 +138,7 @@ def test_strict_json():
 
 def test_package_escape(tmp_path):
     with pytest.raises(ValueError, match="inside source"):
-        ProjectMetadata(tmp_path, "../outside")
+        MetadataBuilder(tmp_path, "../outside")
 
 
 def test_nested_project_uses_relative_git_paths(project):
@@ -153,7 +153,7 @@ def test_nested_project_uses_relative_git_paths(project):
     subprocess.run(
         ["git", "commit", "-m", "nested project"], cwd=project, check=True, capture_output=True
     )
-    metadata = ProjectMetadata(nested, "src/example")
+    metadata = MetadataBuilder(nested, "src/example")
     assert metadata.payload()["BUILD_GIT_DIRTY"] is False
     (project / "outside.txt").write_text("not a distribution input", encoding="utf-8")
     assert metadata.payload()["BUILD_GIT_DIRTY"] is False
@@ -167,11 +167,11 @@ def test_newline_filename_has_explicit_error(project):
         "# cannot represent in SOURCES.txt", encoding="utf-8"
     )
     with pytest.raises(ValueError, match="newline filenames"):
-        ProjectMetadata(project, "src/example").payload()
+        MetadataBuilder(project, "src/example").payload()
 
 
 def test_absolute_package_directory_is_staged_as_relative(project):
-    metadata = ProjectMetadata(project, project / "src/example")
+    metadata = MetadataBuilder(project, project / "src/example")
     assert metadata.package_dirs == [Path("src/example")]
 
 
@@ -202,9 +202,9 @@ def test_multiple_packages_preserve_one_baked_payload(project, tmp_path, monkeyp
     other = project / "src/other"
     other.mkdir()
     (other / "__init__.py").touch()
-    metadata = ProjectMetadata(project, ["src/example", "src/other"])
+    metadata = MetadataBuilder(project, ["src/example", "src/other"])
     epochs = iter((100, 200, 300))
-    monkeypatch.setattr(metadata, "event_time", lambda: next(epochs))
+    monkeypatch.setattr(metadata, "build_timestamp", lambda: next(epochs))
     destinations = [tmp_path / "first", tmp_path / "second"]
     metadata.render(destinations)
     raw = (destinations[0] / "_git_metadata.json").read_bytes()

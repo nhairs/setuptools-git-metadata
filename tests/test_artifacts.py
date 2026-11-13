@@ -14,7 +14,7 @@ import pytest
 
 from pyproject_hooks import BuildBackendHookCaller
 
-from setuptools_git_metadata.schema import _loads
+from setuptools_git_metadata.build import _loads
 from tests.conftest import build, inventory, run
 
 
@@ -100,6 +100,8 @@ def test_wheel_sdist_gitless_roundtrip(project, tmp_path):
 import json, sys
 import example._version as v
 assert 'setuptools_git_metadata' not in sys.modules
+assert v.BUILD_INFO.BUILD_GIT_HASH == v.BUILD_GIT_HASH
+assert v.BUILD_INFO.VERSION_INFO_FULL == v.VERSION_INFO_FULL
 print(json.dumps([v.PACKAGE_VERSION, v.BUILD_GIT_HASH, v.BUILD_TIMESTAMP, v.CUSTOM_DISPLAY]))
 """,
         )
@@ -148,9 +150,11 @@ def test_metadata_preparation_and_editable_placeholders(project, tmp_path):
         "-c",
         """
 import example._version as v
-assert v.PACKAGE_VERSION == ''
-assert v.BUILD_GIT_HASH is None
+assert v.PACKAGE_VERSION == '__metadata_missing__'
+assert v.BUILD_GIT_HASH == '__metadata_missing__'
 assert v.BUILD_TIMESTAMP == 0
+assert v.BUILD_INFO.BUILD_GIT_HASH == v.BUILD_GIT_HASH
+assert v.BUILD_INFO.VERSION_INFO_SHORT == v.VERSION_INFO_SHORT
 assert v.CUSTOM_DISPLAY == 'application-owned'
 """,
     )
@@ -172,6 +176,11 @@ def test_isolated_build_uses_actual_companion_wheel(project, tmp_path):
     """Install the real companion distribution into PEP 517's isolated backend."""
     repository = Path(__file__).resolve().parents[1]
     companion = build(repository, tmp_path / "companion", "wheel")
+    with zipfile.ZipFile(companion) as archive:
+        own = _loads(archive.read("setuptools_git_metadata/_git_metadata.json").decode())
+        assert "setuptools_git_metadata/_version.py" in archive.namelist()
+        assert own["BUILD_GIT_HASH"] == run(repository, "git", "rev-parse", "HEAD").strip()
+
     config = project / "pyproject.toml"
     requirement = "setuptools-git-metadata @ " + companion.as_uri()
     config.write_text(

@@ -17,10 +17,12 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
-from .schema import _loads, _validate
+from dataclasses import fields
+
+from ._version import GitMetadata, SCHEMA_VERSION
 
 
-class ProjectMetadata:
+class MetadataBuilder:
     """Collect one source identity and stage it in the selected package directories."""
 
     def __init__(self, root, package_dirs):
@@ -134,7 +136,7 @@ class ProjectMetadata:
             raise ValueError("a static project.version is required")
         return version
 
-    def payload(self, event=None):
+    def payload(self, build_timestamp=None):
         """Preserve consistent baked metadata or collect live source identity."""
         version = self.validate_configuration()
         data = None
@@ -148,7 +150,7 @@ class ProjectMetadata:
                 data = candidate
         if data is not None:
             return data
-        now = self.event_time() if event is None else event
+        timestamp = self.build_timestamp() if build_timestamp is None else build_timestamp
         try:
             full = self.git("rev-parse", "HEAD")
             prefix = self.git("rev-parse", "--show-prefix")
@@ -173,22 +175,22 @@ class ProjectMetadata:
             "BUILD_GIT_COMMIT_TIMESTAMP": commit_time,
             "BUILD_GIT_DIRTY": dirty,
             "SELECTED_SOURCE_DIGEST": source_digest,
-            "BUILD_TIMESTAMP": now,
-            "SOURCE_TIMESTAMP": now,
+            "BUILD_TIMESTAMP": timestamp,
+            "SOURCE_TIMESTAMP": timestamp,
         }
 
     def render(self, directories, wheel=False):
-        """Capture one artifact event and write identical metadata to each destination."""
-        event = self.event_time()
-        data = self.payload(event)
-        data["WHEEL_BUILD_TIMESTAMP"] = event if wheel else None
-        data["BUILD_TIMESTAMP"] = event
+        """Capture one build timestamp and write identical metadata to each destination."""
+        build_timestamp = self.build_timestamp()
+        data = self.payload(build_timestamp)
+        data["WHEEL_BUILD_TIMESTAMP"] = build_timestamp if wheel else None
+        data["BUILD_TIMESTAMP"] = build_timestamp
         if not wheel:
             if data.get("SDIST_BUILD_TIMESTAMP") is None:
-                data["SDIST_BUILD_TIMESTAMP"] = event
+                data["SDIST_BUILD_TIMESTAMP"] = build_timestamp
         else:
             data.setdefault("SDIST_BUILD_TIMESTAMP", None)
-        data["schema_version"] = 1
+        data["schema_version"] = SCHEMA_VERSION
         _validate(data)
         if isinstance(directories, Path):
             directories = [directories]
@@ -216,7 +218,7 @@ class ProjectMetadata:
             temporary.unlink(missing_ok=True)
 
     @staticmethod
-    def event_time():
+    def build_timestamp():
         """Return the current artifact epoch, respecting SOURCE_DATE_EPOCH."""
         raw = os.environ.get("SOURCE_DATE_EPOCH")
         if raw is None:
@@ -224,3 +226,74 @@ class ProjectMetadata:
         if not raw.isascii() or not raw.isdigit():
             raise ValueError("SOURCE_DATE_EPOCH must be a nonnegative integer")
         return int(raw)
+
+
+# Exact JSON types deliberately reject bool masquerading as an integer.
+def _validate(data):  # pylint: disable=too-many-branches
+    """Validate the complete provenance schema and return the original mapping."""
+    if (
+        not isinstance(data, dict)
+        or (
+            not isinstance(data.get("schema_version"), int)
+            or isinstance(data.get("schema_version"), bool)
+        )
+        or data["schema_version"] != SCHEMA_VERSION
+    ):
+        raise ValueError(f"unsupported provenance schema; expected schema_version={SCHEMA_VERSION}")
+    if not {field.name for field in fields(GitMetadata)}.issubset(data):
+        raise ValueError("provenance resource is missing required fields")
+    for key in ("PACKAGE_VERSION", "BUILD_VERSION"):
+        if not isinstance(data[key], str) or not data[key]:
+            raise ValueError(key + " must be a nonempty string")
+    if data["PACKAGE_VERSION"] != data["BUILD_VERSION"]:
+        raise ValueError("static package and build versions disagree")
+    for key in (
+        "SOURCE_TIMESTAMP",
+        "BUILD_TIMESTAMP",
+        "SDIST_BUILD_TIMESTAMP",
+        "WHEEL_BUILD_TIMESTAMP",
+        "BUILD_GIT_COMMIT_TIMESTAMP",
+    ):
+        value = data[key]
+        if value is None and key not in ("SOURCE_TIMESTAMP", "BUILD_TIMESTAMP"):
+            continue
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(key + " must be a nonnegative integer or permitted null")
+    for key, sizes in (("BUILD_GIT_HASH", (40, 64)), ("SELECTED_SOURCE_DIGEST", (64,))):
+        value = data[key]
+        if value is not None and (
+            not isinstance(value, str)
+            or len(value) not in sizes
+            or any(c not in "0123456789abcdef" for c in value)
+        ):
+            raise ValueError("invalid " + key)
+    full = data["BUILD_GIT_HASH"]
+    if data["BUILD_GIT_HASH_SHORT"] != (full[:8] if full else None):
+        raise ValueError("short hash disagrees with full hash")
+    if data["BUILD_GIT_BRANCH"] is not None and not isinstance(data["BUILD_GIT_BRANCH"], str):
+        raise ValueError("branch must be a string or null")
+    if data["BUILD_GIT_DIRTY"] is not None and not isinstance(data["BUILD_GIT_DIRTY"], bool):
+        raise ValueError("dirty must be boolean or null")
+    return data
+
+
+def _unique_object(pairs):
+    """Build a JSON object while rejecting duplicate keys."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate provenance key: " + key)
+        result[key] = value
+    return result
+
+
+def _reject_constant(value):
+    """Reject JSON parser extensions for nonfinite numeric values."""
+    raise ValueError("invalid JSON constant: " + value)
+
+
+def _loads(raw):
+    """Parse strict JSON and validate its provenance payload."""
+    return _validate(
+        json.loads(raw, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+    )
