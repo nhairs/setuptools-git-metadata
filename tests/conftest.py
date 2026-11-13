@@ -7,7 +7,16 @@ import sys
 
 import pytest
 
-from setuptools_git_metadata.template import standard_template
+from importlib import resources
+
+
+def standard_template():
+    """Read the committed runtime used to create representative consumer packages."""
+    return (
+        resources.files("setuptools_git_metadata")
+        .joinpath("_version.py")
+        .read_text(encoding="utf-8")
+    )
 
 
 @pytest.fixture
@@ -39,9 +48,7 @@ example = ["data.txt", "py.typed"]
     (root / "ignored.txt").write_text("ignored", encoding="utf-8")
     loader = standard_template() + '\nCUSTOM_DISPLAY = "application-owned"\n'
     (package / "_version.py").write_bytes(loader.replace("\n", "\r\n").encode("utf-8"))
-    (package / "__init__.py").write_text(
-        "from ._version import PACKAGE_VERSION\n", encoding="utf-8"
-    )
+    (package / "__init__.py").write_text("from ._version import BUILD_INFO\n", encoding="utf-8")
     (package / "data.txt").write_text("package data", encoding="utf-8")
     (package / "py.typed").touch()
     for args in [

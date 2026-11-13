@@ -17,7 +17,7 @@ def activate(distribution):
         distribution.cmdclass.setdefault("sdist", sdist)
 
 
-def project(command):
+def resolve_project(command):
     """Resolve selected setuptools packages and their shared source metadata."""
     root = Path.cwd()
     config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -43,7 +43,7 @@ class build_py(BaseBuild):  # pylint: disable=invalid-name
 
     def run(self):
         """Build package files and stage metadata for regular installations."""
-        packages, metadata = project(self)
+        packages, metadata = resolve_project(self)
         metadata.validate_configuration()
         super().run()
         if packages and not self.editable_mode:
@@ -58,7 +58,7 @@ class sdist(BaseSdist):  # pylint: disable=invalid-name
 
     def make_release_tree(self, base_dir, files):
         """Populate the release tree before adding baked metadata."""
-        _, metadata = project(self)
+        _, metadata = resolve_project(self)
         metadata.validate_configuration()
         super().make_release_tree(base_dir, files)
         if metadata.package_dirs:

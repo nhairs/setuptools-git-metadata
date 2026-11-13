@@ -56,7 +56,7 @@ print(BUILD_INFO.VERSION_INFO_SHORT)
 print(BUILD_INFO.BUILD_GIT_HASH)
 ```
 
-`BUILD_INFO` is a frozen `GitMetadata` instance. Its `VERSION_INFO_*` strings and `BUILD_DATETIME` are computed properties. Existing uppercase module imports remain available.
+`BUILD_INFO` is a frozen `GitMetadata` instance. Its `VERSION_INFO_*` strings and `BUILD_DATETIME` are computed properties.
 
 To load another package explicitly, use `GitMetadata.from_package("package_name")`.
 
@@ -67,7 +67,7 @@ Without generated metadata, string fields use `__metadata_missing__` and source/
 | Runtime fields | Meaning |
 | --- | --- |
 | `PACKAGE_VERSION`, `BUILD_VERSION` | Declared project version |
-| `BUILD_GIT_HASH`, `BUILD_GIT_HASH_SHORT` | Full Git commit hash and its first eight characters |
+| `BUILD_GIT_HASH`, `BUILD_GIT_HASH_SHORT` | Full Git commit hash and Git's unique abbreviation (at least eight characters) |
 | `BUILD_GIT_BRANCH` | Branch name, or `None` when unavailable |
 | `BUILD_GIT_DIRTY` | Whether selected source inputs have changed |
 | `BUILD_GIT_COMMIT_TIMESTAMP` | Git commit time |
@@ -77,7 +77,7 @@ Without generated metadata, string fields use `__metadata_missing__` and source/
 | `WHEEL_BUILD_TIMESTAMP` | Wheel build time |
 | `BUILD_TIMESTAMP`, `BUILD_DATETIME` | Current artifact build time |
 
-The loader also provides `VERSION_INFO_SHORT`, `VERSION_INFO`, `VERSION_INFO_LONG` and `VERSION_INFO_FULL` display strings.
+`BUILD_INFO` also provides `VERSION_INFO_SHORT`, `VERSION_INFO`, `VERSION_INFO_LONG` and `VERSION_INFO_FULL` display strings.
 
 Wheels built from a source distribution retain its version, commit, branch and source timestamps. Their wheel build time reflects the new build. Set `SOURCE_DATE_EPOCH` to a nonnegative integer to control the artifact build time.
 

@@ -221,3 +221,31 @@ def test_multiple_packages_preserve_one_baked_payload(project, tmp_path, monkeyp
     )
     with pytest.raises(ValueError, match="between packages"):
         metadata.payload()
+
+
+def test_git_abbreviation_can_expand_and_remain_baked(project, tmp_path, monkeypatch):
+    metadata = MetadataBuilder(project, "src/example")
+    git = metadata.git
+    full = git("rev-parse", "HEAD")
+
+    def extended_abbreviation(*args):
+        if args == ("rev-parse", "--short=8", full):
+            return git("rev-parse", "--short=12", full)
+        return git(*args)
+
+    monkeypatch.setattr(metadata, "git", extended_abbreviation)
+    metadata.render(tmp_path / "source")
+    data = _loads((tmp_path / "source/_git_metadata.json").read_text(encoding="utf-8"))
+    assert data["BUILD_GIT_HASH_SHORT"] == full[:12]
+    (project / "src/example/_git_metadata.json").write_text(json.dumps(data), encoding="utf-8")
+
+    def no_git(*args):
+        raise AssertionError(f"Baked metadata must bypass Git: {args}")
+
+    monkeypatch.setattr(metadata, "git", no_git)
+    metadata.render(tmp_path / "wheel", wheel=True)
+    rebuilt = _loads((tmp_path / "wheel/_git_metadata.json").read_text(encoding="utf-8"))
+    assert rebuilt["BUILD_GIT_HASH_SHORT"] == full[:12]
+    for invalid in (full[:7], full + "0", ("0" if full[0] != "0" else "1") + full[1:]):
+        with pytest.raises(ValueError, match="short hash"):
+            _validate(dict(data, BUILD_GIT_HASH_SHORT=invalid))

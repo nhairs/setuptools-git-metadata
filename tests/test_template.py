@@ -12,7 +12,7 @@ from dataclasses import FrozenInstanceError
 
 from setuptools_git_metadata._version import GitMetadata
 from setuptools_git_metadata.build import MetadataBuilder, _validate
-from setuptools_git_metadata.template import standard_template
+from tests.conftest import standard_template
 
 
 def test_cli_exclusive_output(tmp_path):
@@ -30,7 +30,7 @@ def test_cli_exclusive_output(tmp_path):
 def runtime(root):
     env = dict(os.environ, PYTHONPATH=str(root))
     return subprocess.run(
-        [sys.executable, "-c", "import example._version as v; print(v.PACKAGE_VERSION)"],
+        [sys.executable, "-c", "import example._version as v; print(v.BUILD_INFO.PACKAGE_VERSION)"],
         cwd=root,
         env=env,
         capture_output=True,
@@ -60,6 +60,8 @@ def test_runtime_absent_and_invalid_json(project, tmp_path):
     for data in (
         dict(valid, BUILD_GIT_HASH="field-validation-is-build-only"),
         dict(valid, BUILD_GIT_DIRTY=1),
+        dict(valid, BUILD_TIMESTAMP=True),
+        dict(valid, BUILD_TIMESTAMP=float("nan")),
     ):
         sidecar.write_text(json.dumps(data), encoding="utf-8")
         assert runtime(root).returncode == 0
@@ -76,7 +78,11 @@ def test_zip_resource_import(project, tmp_path):
                 output.write(path, "example/" + path.name)
     env = dict(os.environ, PYTHONPATH=str(archive))
     result = subprocess.run(
-        [sys.executable, "-c", "import example; assert example.PACKAGE_VERSION == '1.2.3'"],
+        [
+            sys.executable,
+            "-c",
+            "import example; assert example.BUILD_INFO.PACKAGE_VERSION == '1.2.3'",
+        ],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -85,7 +91,7 @@ def test_zip_resource_import(project, tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_typed_metadata_defaults_properties_and_aliases():
+def test_typed_metadata_defaults_and_properties():
     info = GitMetadata()
     assert info.PACKAGE_VERSION == info.BUILD_GIT_HASH == "__metadata_missing__"
     assert info.BUILD_GIT_BRANCH is info.BUILD_GIT_DIRTY is None
@@ -98,10 +104,12 @@ def test_typed_metadata_defaults_properties_and_aliases():
         setattr(info, "BUILD_VERSION", "changed")
 
 
-def test_runtime_exports_preserve_constant_namespace():
+def test_runtime_exports_model_and_build_info():
     namespace = {}
     exec("from setuptools_git_metadata._version import *", namespace)
-    assert namespace["BUILD_INFO"].BUILD_GIT_HASH == namespace["BUILD_GIT_HASH"]
+    assert "PACKAGE_VERSION" not in namespace
+    assert "BUILD_GIT_HASH" not in namespace
+    assert "VERSION_INFO_SHORT" not in namespace
     assert namespace["GitMetadata"] is GitMetadata
     assert {
         "dataclass",

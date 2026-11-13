@@ -153,6 +153,7 @@ class MetadataBuilder:
         timestamp = self.build_timestamp() if build_timestamp is None else build_timestamp
         try:
             full = self.git("rev-parse", "HEAD")
+            short = self.git("rev-parse", "--short=8", full)
             prefix = self.git("rev-parse", "--show-prefix")
             self.git("cat-file", "-e", "HEAD:" + prefix + "pyproject.toml")
             branch = (
@@ -162,7 +163,7 @@ class MetadataBuilder:
             )
             commit_time = int(self.git("show", "-s", "--format=%ct", "HEAD"))
         except (subprocess.CalledProcessError, FileNotFoundError):
-            full, branch, commit_time = None, None, None
+            full, short, branch, commit_time = None, None, None, None
             dirty, source_digest = None, None
         else:
             dirty, source_digest = self.selected_dirty()
@@ -170,7 +171,7 @@ class MetadataBuilder:
             "PACKAGE_VERSION": version,
             "BUILD_VERSION": version,
             "BUILD_GIT_HASH": full,
-            "BUILD_GIT_HASH_SHORT": full[:8] if full else None,
+            "BUILD_GIT_HASH_SHORT": short,
             "BUILD_GIT_BRANCH": branch,
             "BUILD_GIT_COMMIT_TIMESTAMP": commit_time,
             "BUILD_GIT_DIRTY": dirty,
@@ -268,7 +269,13 @@ def _validate(data):  # pylint: disable=too-many-branches
         ):
             raise ValueError("invalid " + key)
     full = data["BUILD_GIT_HASH"]
-    if data["BUILD_GIT_HASH_SHORT"] != (full[:8] if full else None):
+    short = data["BUILD_GIT_HASH_SHORT"]
+    valid_short = short is None
+    if full is not None:
+        valid_short = (
+            isinstance(short, str) and 8 <= len(short) <= len(full) and full.startswith(short)
+        )
+    if not valid_short:
         raise ValueError("short hash disagrees with full hash")
     if data["BUILD_GIT_BRANCH"] is not None and not isinstance(data["BUILD_GIT_BRANCH"], str):
         raise ValueError("branch must be a string or null")

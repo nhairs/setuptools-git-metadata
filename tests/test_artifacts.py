@@ -77,6 +77,7 @@ def test_wheel_sdist_gitless_roundtrip(project, tmp_path):
         "PACKAGE_VERSION",
         "BUILD_VERSION",
         "BUILD_GIT_HASH",
+        "BUILD_GIT_HASH_SHORT",
         "BUILD_GIT_BRANCH",
         "BUILD_GIT_DIRTY",
         "BUILD_GIT_COMMIT_TIMESTAMP",
@@ -100,9 +101,7 @@ def test_wheel_sdist_gitless_roundtrip(project, tmp_path):
 import json, sys
 import example._version as v
 assert 'setuptools_git_metadata' not in sys.modules
-assert v.BUILD_INFO.BUILD_GIT_HASH == v.BUILD_GIT_HASH
-assert v.BUILD_INFO.VERSION_INFO_FULL == v.VERSION_INFO_FULL
-print(json.dumps([v.PACKAGE_VERSION, v.BUILD_GIT_HASH, v.BUILD_TIMESTAMP, v.CUSTOM_DISPLAY]))
+print(json.dumps([v.BUILD_INFO.PACKAGE_VERSION, v.BUILD_INFO.BUILD_GIT_HASH, v.BUILD_INFO.BUILD_TIMESTAMP, v.CUSTOM_DISPLAY]))
 """,
         )
     )
@@ -150,11 +149,9 @@ def test_metadata_preparation_and_editable_placeholders(project, tmp_path):
         "-c",
         """
 import example._version as v
-assert v.PACKAGE_VERSION == '__metadata_missing__'
-assert v.BUILD_GIT_HASH == '__metadata_missing__'
-assert v.BUILD_TIMESTAMP == 0
-assert v.BUILD_INFO.BUILD_GIT_HASH == v.BUILD_GIT_HASH
-assert v.BUILD_INFO.VERSION_INFO_SHORT == v.VERSION_INFO_SHORT
+assert v.BUILD_INFO.PACKAGE_VERSION == '__metadata_missing__'
+assert v.BUILD_INFO.BUILD_GIT_HASH == '__metadata_missing__'
+assert v.BUILD_INFO.BUILD_TIMESTAMP == 0
 assert v.CUSTOM_DISPLAY == 'application-owned'
 """,
     )

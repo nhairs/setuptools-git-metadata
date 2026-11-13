@@ -3,7 +3,7 @@
 import argparse
 from pathlib import Path
 import sys
-from .template import standard_template
+from importlib import resources
 
 
 def main():
@@ -21,12 +21,17 @@ def main():
 
 def write_template(args, parser):
     """Write the selected template to stdout or a new file."""
+    content = (
+        resources.files("setuptools_git_metadata")
+        .joinpath("_version.py")
+        .read_text(encoding="utf-8")
+    )
     if args.output is None:
-        sys.stdout.write(standard_template())
+        sys.stdout.write(content)
     else:
         try:
             with args.output.open("x", encoding="utf-8", newline="") as stream:
-                stream.write(standard_template())
+                stream.write(content)
         except OSError as error:
             parser.error(str(error))
 
