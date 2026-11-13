@@ -96,3 +96,20 @@ def test_typed_metadata_defaults_properties_and_aliases():
     assert str(info.BUILD_DATETIME) == "1970-01-01 00:00:00"
     with pytest.raises(FrozenInstanceError):
         setattr(info, "BUILD_VERSION", "changed")
+
+
+def test_runtime_exports_preserve_constant_namespace():
+    namespace = {}
+    exec("from setuptools_git_metadata._version import *", namespace)
+    assert namespace["BUILD_INFO"].BUILD_GIT_HASH == namespace["BUILD_GIT_HASH"]
+    assert namespace["GitMetadata"] is GitMetadata
+    assert {
+        "dataclass",
+        "fields",
+        "datetime",
+        "timezone",
+        "resources",
+        "json",
+        "Final",
+        "Optional",
+    }.isdisjoint(namespace)

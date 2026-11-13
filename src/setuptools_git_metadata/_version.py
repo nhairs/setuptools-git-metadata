@@ -1,16 +1,16 @@
 """Load build information for this package or a copy of this module."""
 
-from dataclasses import dataclass, fields
-from datetime import datetime, timezone
-from importlib import resources
-import json
-from typing import Final, Optional
+import dataclasses as _dataclasses
+import datetime as _datetime
+from importlib import resources as _resources
+import json as _json
+from typing import Final as _Final, Optional as _Optional
 
 SCHEMA_VERSION = 1
 _METADATA_MISSING = "__metadata_missing__"
 
 
-@dataclass(frozen=True)
+@_dataclasses.dataclass(frozen=True)
 class GitMetadata:  # pylint: disable=too-many-instance-attributes
     """Version and Git information recorded when a distribution was built."""
 
@@ -21,25 +21,25 @@ class GitMetadata:  # pylint: disable=too-many-instance-attributes
     BUILD_VERSION: str = _METADATA_MISSING
     BUILD_GIT_HASH: str = _METADATA_MISSING
     BUILD_GIT_HASH_SHORT: str = _METADATA_MISSING
-    BUILD_GIT_BRANCH: Optional[str] = None
-    BUILD_GIT_DIRTY: Optional[bool] = None
-    BUILD_GIT_COMMIT_TIMESTAMP: Optional[int] = None
+    BUILD_GIT_BRANCH: _Optional[str] = None
+    BUILD_GIT_DIRTY: _Optional[bool] = None
+    BUILD_GIT_COMMIT_TIMESTAMP: _Optional[int] = None
     SELECTED_SOURCE_DIGEST: str = _METADATA_MISSING
     SOURCE_TIMESTAMP: int = 0
     BUILD_TIMESTAMP: int = 0
-    SDIST_BUILD_TIMESTAMP: Optional[int] = None
-    WHEEL_BUILD_TIMESTAMP: Optional[int] = None
+    SDIST_BUILD_TIMESTAMP: _Optional[int] = None
+    WHEEL_BUILD_TIMESTAMP: _Optional[int] = None
 
     @classmethod
     def from_package(cls, package: str) -> "GitMetadata":
         """Read the package resource, using defaults only when it is absent."""
         try:
             raw = (
-                resources.files(package).joinpath("_git_metadata.json").read_text(encoding="utf-8")
+                _resources.files(package).joinpath("_git_metadata.json").read_text(encoding="utf-8")
             )
         except FileNotFoundError:
             return cls()
-        data = json.loads(raw)
+        data = _json.loads(raw)
         if (
             not isinstance(data, dict)
             or not isinstance(data.get("schema_version"), int)
@@ -49,7 +49,7 @@ class GitMetadata:  # pylint: disable=too-many-instance-attributes
             raise ValueError(
                 f"unsupported provenance schema; expected schema_version={SCHEMA_VERSION}"
             )
-        model_fields = fields(cls)
+        model_fields = _dataclasses.fields(cls)
         if not {field.name for field in model_fields}.issubset(data):
             raise ValueError("provenance resource is missing required fields")
         values = {
@@ -63,9 +63,11 @@ class GitMetadata:  # pylint: disable=too-many-instance-attributes
         return cls(**values)
 
     @property
-    def BUILD_DATETIME(self) -> datetime:
+    def BUILD_DATETIME(self) -> _datetime.datetime:
         """Return the build time as a UTC-naive datetime."""
-        return datetime.fromtimestamp(self.BUILD_TIMESTAMP, timezone.utc).replace(tzinfo=None)
+        return _datetime.datetime.fromtimestamp(
+            self.BUILD_TIMESTAMP, _datetime.timezone.utc
+        ).replace(tzinfo=None)
 
     @property
     def VERSION_INFO_SHORT(self) -> str:
@@ -92,7 +94,7 @@ class GitMetadata:  # pylint: disable=too-many-instance-attributes
 
 
 # pylint: enable=invalid-name
-BUILD_INFO: Final[GitMetadata] = GitMetadata.from_package(__package__)
+BUILD_INFO: _Final[GitMetadata] = GitMetadata.from_package(__package__)
 
 # Explicit aliases also support existing imports and custom module-level helpers.
 PACKAGE_VERSION = BUILD_INFO.PACKAGE_VERSION
