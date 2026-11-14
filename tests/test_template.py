@@ -1,6 +1,7 @@
 """The generated standard loader is a self-contained, resource-aware Python module."""
 
 import json
+from pathlib import Path
 import os
 import subprocess
 import sys
@@ -11,11 +12,11 @@ import pytest
 from dataclasses import FrozenInstanceError
 
 from setuptools_git_metadata._version import GitMetadata
-from setuptools_git_metadata.build import MetadataBuilder, _validate
+from setuptools_git_metadata.build import MetadataBuilder, _validate_metadata
 from tests.conftest import standard_template
 
 
-def test_cli_exclusive_output(tmp_path):
+def test_cli_exclusive_output(tmp_path: Path) -> None:
     command = [sys.executable, "-m", "setuptools_git_metadata", "template"]
     generated = subprocess.check_output(command, encoding="utf-8")
     assert generated == standard_template()
@@ -27,7 +28,7 @@ def test_cli_exclusive_output(tmp_path):
     assert path.read_bytes() == b"application owned"
 
 
-def runtime(root):
+def runtime(root: Path) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ, PYTHONPATH=str(root))
     return subprocess.run(
         [sys.executable, "-c", "import example._version as v; print(v.BUILD_INFO.PACKAGE_VERSION)"],
@@ -38,11 +39,11 @@ def runtime(root):
     )
 
 
-def test_runtime_absent_and_invalid_json(project, tmp_path):
+def test_runtime_absent_and_invalid_json(project: Path, tmp_path: Path) -> None:
     root = project / "src"
     assert runtime(root).returncode == 0
     data_dir = tmp_path / "data"
-    MetadataBuilder(project, "src/example").render(data_dir, wheel=True)
+    MetadataBuilder(project, "src/example").write_metadata(data_dir, wheel=True)
     valid = json.loads((data_dir / "_git_metadata.json").read_text(encoding="utf-8"))
     sidecar = root / "example/_git_metadata.json"
     for invalid in (
@@ -66,11 +67,11 @@ def test_runtime_absent_and_invalid_json(project, tmp_path):
         sidecar.write_text(json.dumps(data), encoding="utf-8")
         assert runtime(root).returncode == 0
         with pytest.raises(ValueError):
-            _validate(data)
+            _validate_metadata(data)
 
 
-def test_zip_resource_import(project, tmp_path):
-    MetadataBuilder(project, "src/example").render(project / "src/example", wheel=True)
+def test_zip_resource_import(project: Path, tmp_path: Path) -> None:
+    MetadataBuilder(project, "src/example").write_metadata(project / "src/example", wheel=True)
     archive = tmp_path / "example.zip"
     with zipfile.ZipFile(archive, "w") as output:
         for path in (project / "src/example").iterdir():
@@ -91,7 +92,7 @@ def test_zip_resource_import(project, tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_typed_metadata_defaults_and_properties():
+def test_typed_metadata_defaults_and_properties() -> None:
     info = GitMetadata()
     assert info.PACKAGE_VERSION == info.BUILD_GIT_HASH == "__metadata_missing__"
     assert info.BUILD_GIT_BRANCH is info.BUILD_GIT_DIRTY is None
@@ -104,13 +105,14 @@ def test_typed_metadata_defaults_and_properties():
         setattr(info, "BUILD_VERSION", "changed")
 
 
-def test_runtime_exports_model_and_build_info():
+def test_runtime_exports_model_and_build_info() -> None:
     namespace = {}
     exec("from setuptools_git_metadata._version import *", namespace)
     assert "PACKAGE_VERSION" not in namespace
     assert "BUILD_GIT_HASH" not in namespace
     assert "VERSION_INFO_SHORT" not in namespace
     assert namespace["GitMetadata"] is GitMetadata
+    assert set(namespace) - {"__builtins__"} == {"GitMetadata", "BUILD_INFO"}
     assert {
         "dataclass",
         "fields",

@@ -6,7 +6,7 @@ import sys
 from importlib import resources
 
 
-def main():
+def main() -> None:
     """Print the loader or exclusively create a requested source file."""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -19,13 +19,9 @@ def main():
         write_template(args, parser)
 
 
-def write_template(args, parser):
+def write_template(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     """Write the selected template to stdout or a new file."""
-    content = (
-        resources.files("setuptools_git_metadata")
-        .joinpath("_version.py")
-        .read_text(encoding="utf-8")
-    )
+    content = resources.files(__package__).joinpath("_version.py").read_text(encoding="utf-8")
     if args.output is None:
         sys.stdout.write(content)
     else:

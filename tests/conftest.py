@@ -10,7 +10,7 @@ import pytest
 from importlib import resources
 
 
-def standard_template():
+def standard_template() -> str:
     """Read the committed runtime used to create representative consumer packages."""
     return (
         resources.files("setuptools_git_metadata")
@@ -20,7 +20,7 @@ def standard_template():
 
 
 @pytest.fixture
-def project(tmp_path):
+def project(tmp_path: Path) -> Path:
     root = tmp_path / "consumer"
     package = root / "src/example"
     package.mkdir(parents=True)
@@ -63,13 +63,13 @@ example = ["data.txt", "py.typed"]
     return root
 
 
-def run(root, *args, env=None):
+def run(root: Path, *args: str, env: dict[str, str] | None = None) -> str:
     result = subprocess.run(args, cwd=root, env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return result.stdout
 
 
-def build(root, out, kind, env=None):
+def build(root: Path, out: Path, kind: str, env: dict[str, str] | None = None) -> Path:
     run(
         root,
         sys.executable,
@@ -84,7 +84,7 @@ def build(root, out, kind, env=None):
     return next(out.glob("*.whl" if kind == "wheel" else "*.tar.gz"))
 
 
-def inventory(root):
+def inventory(root: Path) -> dict[str, str]:
     """Include ignored/untracked source; separate ordinary backend output paths."""
     return {
         path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()

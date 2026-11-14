@@ -9,6 +9,8 @@ import tarfile
 import tempfile
 import os
 from pathlib import Path
+from collections.abc import Iterable
+from typing import NoReturn, cast
 import subprocess
 import time
 
@@ -19,32 +21,37 @@ except ModuleNotFoundError:  # Python 3.10
 
 from dataclasses import fields
 
-from ._version import GitMetadata, SCHEMA_VERSION
+from ._version import GitMetadata, _SCHEMA_VERSION
 
 
 class MetadataBuilder:
     """Collect one source identity and stage it in the selected package directories."""
 
-    def __init__(self, root, package_dirs):
+    def __init__(self, root: str | Path, package_dirs: str | Path | Iterable[str | Path]) -> None:
         """Resolve package directories within the source root."""
         self.root = Path(root).resolve()
         if isinstance(package_dirs, (str, Path)):
             package_dirs = [package_dirs]
-        self.package_dirs = []
+        self.package_dirs: list[Path] = []
         for package_dir in package_dirs:
             resolved = (self.root / package_dir).resolve()
             if not resolved.is_relative_to(self.root):
                 raise ValueError("package directory must be inside source tree")
             self.package_dirs.append(resolved.relative_to(self.root))
 
-    def git(self, *args):
+    def git(self, *args: str) -> str:
         """Run a Git query in the source root and return stripped text."""
         return subprocess.check_output(
             ["git", *args], cwd=self.root, text=True, stderr=subprocess.DEVNULL, timeout=30
         ).strip()
 
-    def selected_dirty(self):  # pylint: disable=too-many-locals
-        """Fresh backend manifests for current and HEAD with current config."""
+    def selected_dirty(self) -> tuple[bool, str]:  # pylint: disable=too-many-locals
+        """Return selected-source dirtiness and its digest.
+
+        Compare working files with fresh setuptools source lists for both the current
+        checkout and HEAD, using the current build configuration for each. Including
+        both lists detects deleted inputs as well as newly selected files.
+        """
         all_git_paths = subprocess.check_output(
             ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
             cwd=self.root,
@@ -57,7 +64,7 @@ class MetadataBuilder:
 
         generated = {(path / "_git_metadata.json").as_posix() for path in self.package_dirs}
 
-        def selected(root):
+        def selected(root: Path) -> set[str]:
             with tempfile.TemporaryDirectory() as td:
                 subprocess.run(
                     [
@@ -97,7 +104,7 @@ class MetadataBuilder:
                     (head / control).unlink()
             paths = selected(self.root) | selected(head)
 
-            def git_paths(*args):
+            def git_paths(*args: str) -> set[str]:
                 output = subprocess.check_output(["git", *args, "-z"], cwd=self.root)
                 return {os.fsdecode(p) for p in output.split(b"\0") if p}
 
@@ -117,13 +124,13 @@ class MetadataBuilder:
                     )
             return bool(relevant), digest.hexdigest()
 
-    def validate_baked(self, data, version):
+    def validate_baked(self, data: dict[str, object], version: str) -> None:
         """Validate baked metadata against the declared project version."""
-        _validate(data)
+        _validate_metadata(data)
         if data["PACKAGE_VERSION"] != version:
             raise ValueError("baked version disagrees with project.version")
 
-    def validate_configuration(self):
+    def validate_configuration(self) -> str:
         """Return the authoritative static version or reject unsupported settings."""
         config = tomllib.loads((self.root / "pyproject.toml").read_text(encoding="utf-8"))
         if (
@@ -136,10 +143,10 @@ class MetadataBuilder:
             raise ValueError("a static project.version is required")
         return version
 
-    def payload(self, build_timestamp=None):
+    def generate_metadata(self, build_timestamp: int | None = None) -> dict[str, object]:
         """Preserve consistent baked metadata or collect live source identity."""
         version = self.validate_configuration()
-        data = None
+        data: dict[str, object] | None = None
         for package_dir in self.package_dirs:
             baked = self.root / package_dir / "_git_metadata.json"
             if baked.exists():
@@ -180,10 +187,10 @@ class MetadataBuilder:
             "SOURCE_TIMESTAMP": timestamp,
         }
 
-    def render(self, directories, wheel=False):
+    def write_metadata(self, directories: Path | Iterable[Path], wheel: bool = False) -> None:
         """Capture one build timestamp and write identical metadata to each destination."""
         build_timestamp = self.build_timestamp()
-        data = self.payload(build_timestamp)
+        data = self.generate_metadata(build_timestamp)
         data["WHEEL_BUILD_TIMESTAMP"] = build_timestamp if wheel else None
         data["BUILD_TIMESTAMP"] = build_timestamp
         if not wheel:
@@ -191,8 +198,8 @@ class MetadataBuilder:
                 data["SDIST_BUILD_TIMESTAMP"] = build_timestamp
         else:
             data.setdefault("SDIST_BUILD_TIMESTAMP", None)
-        data["schema_version"] = SCHEMA_VERSION
-        _validate(data)
+        data["schema_version"] = _SCHEMA_VERSION
+        _validate_metadata(data)
         if isinstance(directories, Path):
             directories = [directories]
         content = json.dumps(data, sort_keys=True)
@@ -201,7 +208,7 @@ class MetadataBuilder:
             self.atomic_write(directory / "_git_metadata.json", content)
 
     @staticmethod
-    def atomic_write(path, content):
+    def atomic_write(path: Path, content: str) -> None:
         """Replace a staged file atomically without changing linked source files."""
         # Replace copied files instead of editing a possibly hardlinked inode.
         with tempfile.NamedTemporaryFile(
@@ -219,7 +226,7 @@ class MetadataBuilder:
             temporary.unlink(missing_ok=True)
 
     @staticmethod
-    def build_timestamp():
+    def build_timestamp() -> int:
         """Return the current artifact epoch, respecting SOURCE_DATE_EPOCH."""
         raw = os.environ.get("SOURCE_DATE_EPOCH")
         if raw is None:
@@ -230,19 +237,19 @@ class MetadataBuilder:
 
 
 # Exact JSON types deliberately reject bool masquerading as an integer.
-def _validate(data):  # pylint: disable=too-many-branches
-    """Validate the complete provenance schema and return the original mapping."""
+def _validate_metadata(data: object) -> dict[str, object]:  # pylint: disable=too-many-branches
+    """Validate the complete metadata schema and return the original mapping."""
     if (
         not isinstance(data, dict)
         or (
             not isinstance(data.get("schema_version"), int)
             or isinstance(data.get("schema_version"), bool)
         )
-        or data["schema_version"] != SCHEMA_VERSION
+        or data["schema_version"] != _SCHEMA_VERSION
     ):
-        raise ValueError(f"unsupported provenance schema; expected schema_version={SCHEMA_VERSION}")
+        raise ValueError(f"unsupported metadata schema; expected schema_version={_SCHEMA_VERSION}")
     if not {field.name for field in fields(GitMetadata)}.issubset(data):
-        raise ValueError("provenance resource is missing required fields")
+        raise ValueError("metadata is missing required fields")
     for key in ("PACKAGE_VERSION", "BUILD_VERSION"):
         if not isinstance(data[key], str) or not data[key]:
             raise ValueError(key + " must be a nonempty string")
@@ -268,7 +275,7 @@ def _validate(data):  # pylint: disable=too-many-branches
             or any(c not in "0123456789abcdef" for c in value)
         ):
             raise ValueError("invalid " + key)
-    full = data["BUILD_GIT_HASH"]
+    full = cast(str | None, data["BUILD_GIT_HASH"])
     short = data["BUILD_GIT_HASH_SHORT"]
     valid_short = short is None
     if full is not None:
@@ -281,26 +288,26 @@ def _validate(data):  # pylint: disable=too-many-branches
         raise ValueError("branch must be a string or null")
     if data["BUILD_GIT_DIRTY"] is not None and not isinstance(data["BUILD_GIT_DIRTY"], bool):
         raise ValueError("dirty must be boolean or null")
-    return data
+    return cast(dict[str, object], data)
 
 
-def _unique_object(pairs):
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     """Build a JSON object while rejecting duplicate keys."""
-    result = {}
+    result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError("duplicate provenance key: " + key)
+            raise ValueError("duplicate metadata key: " + key)
         result[key] = value
     return result
 
 
-def _reject_constant(value):
+def _reject_constant(value: str) -> NoReturn:
     """Reject JSON parser extensions for nonfinite numeric values."""
     raise ValueError("invalid JSON constant: " + value)
 
 
-def _loads(raw):
+def _loads(raw: str) -> dict[str, object]:
     """Parse strict JSON and validate its provenance payload."""
-    return _validate(
+    return _validate_metadata(
         json.loads(raw, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
     )

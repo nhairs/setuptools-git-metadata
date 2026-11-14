@@ -18,7 +18,7 @@ from setuptools_git_metadata.build import _loads
 from tests.conftest import build, inventory, run
 
 
-def wheel_resource(wheel):
+def wheel_resource(wheel: Path) -> tuple[dict[str, object], bytes]:
     with zipfile.ZipFile(wheel) as archive:
         data = _loads(archive.read("example/_git_metadata.json").decode("utf-8"))
         loader = archive.read("example/_version.py")
@@ -29,11 +29,11 @@ def wheel_resource(wheel):
     return data, loader
 
 
-def environment_python(root):
+def environment_python(root: Path) -> Path:
     return root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
-def install(wheel, root):
+def install(wheel: Path, root: Path) -> Path:
     venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt").create(root)
     python = environment_python(root)
     subprocess.run(
@@ -44,7 +44,7 @@ def install(wheel, root):
     return python
 
 
-def test_wheel_sdist_gitless_roundtrip(project, tmp_path):
+def test_wheel_sdist_gitless_roundtrip(project: Path, tmp_path: Path) -> None:
     before = inventory(project)
     original = (project / "src/example/_version.py").read_bytes()
     env = dict(os.environ, SOURCE_DATE_EPOCH="100", PYTHONDONTWRITEBYTECODE="1")
@@ -129,7 +129,7 @@ print(json.dumps([v.BUILD_INFO.PACKAGE_VERSION, v.BUILD_INFO.BUILD_GIT_HASH, v.B
     assert failure.returncode and "baked version disagrees" in failure.stdout + failure.stderr
 
 
-def test_metadata_preparation_and_editable_placeholders(project, tmp_path):
+def test_metadata_preparation_and_editable_placeholders(project: Path, tmp_path: Path) -> None:
     before = inventory(project)
     caller = BuildBackendHookCaller(
         str(project), "setuptools.build_meta", python_executable=sys.executable
@@ -158,7 +158,7 @@ assert v.CUSTOM_DISPLAY == 'application-owned'
     assert inventory(project) == before
 
 
-def test_unbaked_gitless_local_artifact(project, tmp_path):
+def test_unbaked_gitless_local_artifact(project: Path, tmp_path: Path) -> None:
     source = tmp_path / "gitless"
     shutil.copytree(
         project, source, ignore=shutil.ignore_patterns(".git", "*.egg-info", "build", "__pycache__")
@@ -169,7 +169,7 @@ def test_unbaked_gitless_local_artifact(project, tmp_path):
     assert data["BUILD_GIT_HASH"] is None and data["BUILD_GIT_DIRTY"] is None
 
 
-def test_isolated_build_uses_actual_companion_wheel(project, tmp_path):
+def test_isolated_build_uses_actual_companion_wheel(project: Path, tmp_path: Path) -> None:
     """Install the real companion distribution into PEP 517's isolated backend."""
     repository = Path(__file__).resolve().parents[1]
     companion = build(repository, tmp_path / "companion", "wheel")
@@ -210,7 +210,9 @@ def test_isolated_build_uses_actual_companion_wheel(project, tmp_path):
 
 
 @pytest.mark.parametrize("selected", [None, ["other"], "other"])
-def test_multiple_packages_default_and_subset(project, tmp_path, selected):
+def test_multiple_packages_default_and_subset(
+    project: Path, tmp_path: Path, selected: list[str] | str | None
+) -> None:
     config = project / "pyproject.toml"
     if selected is not None:
         config.write_text(

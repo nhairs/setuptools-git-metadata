@@ -1,6 +1,7 @@
 """Build-side identity, strict provenance and selection behavior."""
 
 import json
+import typing
 import os
 from pathlib import Path
 import subprocess
@@ -8,38 +9,40 @@ import subprocess
 import pytest
 
 from setuptools_git_metadata.build import MetadataBuilder
-from setuptools_git_metadata.build import _loads, _validate
+from setuptools_git_metadata.build import _loads, _validate_metadata
 from tests.conftest import inventory
 
 
-def test_selected_source_changes(project):
+def test_selected_source_changes(project: Path) -> None:
     metadata = MetadataBuilder(project, "src/example")
     before = inventory(project)
-    original = metadata.payload()
+    original = metadata.generate_metadata()
     assert original["PACKAGE_VERSION"] == original["BUILD_VERSION"] == "1.2.3"
-    assert len(original["BUILD_GIT_HASH"]) == 40
+    full_hash = original["BUILD_GIT_HASH"]
+    assert isinstance(full_hash, str)
+    assert len(full_hash) == 40
     assert original["BUILD_GIT_DIRTY"] is False
     for name in ("excluded.txt", "ignored.txt"):
         (project / name).write_text("changed", encoding="utf-8")
-        assert metadata.payload()["BUILD_GIT_DIRTY"] is False
+        assert metadata.generate_metadata()["BUILD_GIT_DIRTY"] is False
     data = project / "src/example/data.txt"
     data.unlink()
-    assert metadata.payload()["BUILD_GIT_DIRTY"] is True
+    assert metadata.generate_metadata()["BUILD_GIT_DIRTY"] is True
     data.write_text("package data", encoding="utf-8")
     for name in ("new.py", "with space.py", "café.py"):
         path = project / "src/example" / name
         path.write_text("# selected untracked", encoding="utf-8")
-        assert metadata.payload()["BUILD_GIT_DIRTY"] is True, name
+        assert metadata.generate_metadata()["BUILD_GIT_DIRTY"] is True, name
         path.unlink()
     template = project / "src/example/_version.py"
     template.write_bytes(template.read_bytes() + b'\nCUSTOM = "changed"\n')
-    changed = metadata.payload()
+    changed = metadata.generate_metadata()
     assert changed["BUILD_GIT_DIRTY"] is True
     assert changed["SELECTED_SOURCE_DIGEST"] != original["SELECTED_SOURCE_DIGEST"]
     assert "ignored.txt" in before  # Ignored source is actually inventoried.
 
 
-def test_detached_and_shallow(project, tmp_path):
+def test_detached_and_shallow(project: Path, tmp_path: Path) -> None:
     clone = tmp_path / "shallow"
     subprocess.run(
         ["git", "clone", "--depth=1", "--no-local", project.as_uri(), str(clone)],
@@ -47,23 +50,23 @@ def test_detached_and_shallow(project, tmp_path):
         capture_output=True,
     )
     metadata = MetadataBuilder(clone, "src/example")
-    assert metadata.payload()["BUILD_GIT_DIRTY"] is False
+    assert metadata.generate_metadata()["BUILD_GIT_DIRTY"] is False
     subprocess.run(["git", "checkout", "--detach"], cwd=clone, check=True, capture_output=True)
-    assert metadata.payload()["BUILD_GIT_BRANCH"] is None
+    assert metadata.generate_metadata()["BUILD_GIT_BRANCH"] is None
 
 
-def test_selector_failure_not_missing_git(project, monkeypatch):
+def test_selector_failure_not_missing_git(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     metadata = MetadataBuilder(project, "src/example")
 
-    def failed():
+    def failed() -> typing.NoReturn:
         raise subprocess.CalledProcessError(1, ["selection"])
 
     monkeypatch.setattr(metadata, "selected_dirty", failed)
     with pytest.raises(subprocess.CalledProcessError):
-        metadata.payload()
+        metadata.generate_metadata()
 
 
-def test_hardlink_write_does_not_change_original(tmp_path):
+def test_hardlink_write_does_not_change_original(tmp_path: Path) -> None:
     original = tmp_path / "original.json"
     original.write_text("original", encoding="utf-8")
     staged = tmp_path / "staged.json"
@@ -74,13 +77,13 @@ def test_hardlink_write_does_not_change_original(tmp_path):
 
 
 @pytest.mark.parametrize("invalid", ["-1", "", "false", "1.0", "１２"])
-def test_invalid_clock(invalid, monkeypatch):
+def test_invalid_clock(invalid: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SOURCE_DATE_EPOCH", invalid)
     with pytest.raises(ValueError, match="SOURCE_DATE_EPOCH"):
         MetadataBuilder.build_timestamp()
 
 
-def test_unknown_mode_before_output(project, tmp_path):
+def test_unknown_mode_before_output(project: Path, tmp_path: Path) -> None:
     config = project / "pyproject.toml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(
@@ -91,19 +94,21 @@ def test_unknown_mode_before_output(project, tmp_path):
     )
     target = tmp_path / "not-created"
     with pytest.raises(NotImplementedError):
-        MetadataBuilder(project, "src/example").render(target)
+        MetadataBuilder(project, "src/example").write_metadata(target)
     assert not target.exists()
 
 
-def test_baked_priority_and_epoch_zero(project, tmp_path, monkeypatch):
+def test_baked_priority_and_epoch_zero(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     metadata = MetadataBuilder(project, "src/example")
     monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
-    metadata.render(tmp_path / "first")
+    metadata.write_metadata(tmp_path / "first")
     baked = _loads((tmp_path / "first/_git_metadata.json").read_text(encoding="utf-8"))
     assert baked["BUILD_GIT_DIRTY"] is False and baked["SOURCE_TIMESTAMP"] == 0
     (project / "src/example/_git_metadata.json").write_text(json.dumps(baked), encoding="utf-8")
     monkeypatch.setenv("SOURCE_DATE_EPOCH", "100")
-    metadata.render(tmp_path / "wheel", wheel=True)
+    metadata.write_metadata(tmp_path / "wheel", wheel=True)
     rebuilt = _loads((tmp_path / "wheel/_git_metadata.json").read_text(encoding="utf-8"))
     assert rebuilt["SOURCE_TIMESTAMP"] == rebuilt["SDIST_BUILD_TIMESTAMP"] == 0
     assert rebuilt["BUILD_TIMESTAMP"] == rebuilt["WHEEL_BUILD_TIMESTAMP"] == 100
@@ -122,26 +127,26 @@ def test_baked_priority_and_epoch_zero(project, tmp_path, monkeypatch):
         "WHEEL_BUILD_TIMESTAMP",
     ],
 )
-def test_bool_is_not_timestamp_or_schema(project, tmp_path, field):
-    MetadataBuilder(project, "src/example").render(tmp_path / "payload")
+def test_bool_is_not_timestamp_or_schema(project: Path, tmp_path: Path, field: str) -> None:
+    MetadataBuilder(project, "src/example").write_metadata(tmp_path / "payload")
     data = _loads((tmp_path / "payload/_git_metadata.json").read_text(encoding="utf-8"))
     data[field] = True
     with pytest.raises(ValueError):
-        _validate(data)
+        _validate_metadata(data)
 
 
-def test_strict_json():
+def test_strict_json() -> None:
     for text in ('{"schema_version":1,"schema_version":1}', '{"x":NaN}', "{bad", "{}"):
         with pytest.raises(ValueError):
             _loads(text)
 
 
-def test_package_escape(tmp_path):
+def test_package_escape(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="inside source"):
         MetadataBuilder(tmp_path, "../outside")
 
 
-def test_nested_project_uses_relative_git_paths(project):
+def test_nested_project_uses_relative_git_paths(project: Path) -> None:
     import shutil
 
     nested = project / "packages" / "example"
@@ -154,28 +159,30 @@ def test_nested_project_uses_relative_git_paths(project):
         ["git", "commit", "-m", "nested project"], cwd=project, check=True, capture_output=True
     )
     metadata = MetadataBuilder(nested, "src/example")
-    assert metadata.payload()["BUILD_GIT_DIRTY"] is False
+    assert metadata.generate_metadata()["BUILD_GIT_DIRTY"] is False
     (project / "outside.txt").write_text("not a distribution input", encoding="utf-8")
-    assert metadata.payload()["BUILD_GIT_DIRTY"] is False
+    assert metadata.generate_metadata()["BUILD_GIT_DIRTY"] is False
     (nested / "README.md").write_text("selected", encoding="utf-8")
-    assert metadata.payload()["BUILD_GIT_DIRTY"] is True
+    assert metadata.generate_metadata()["BUILD_GIT_DIRTY"] is True
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Windows prohibits newline characters in filenames")
-def test_newline_filename_has_explicit_error(project):
+def test_newline_filename_has_explicit_error(project: Path) -> None:
     (project / "src/example/new\nline.py").write_text(
         "# cannot represent in SOURCES.txt", encoding="utf-8"
     )
     with pytest.raises(ValueError, match="newline filenames"):
-        MetadataBuilder(project, "src/example").payload()
+        MetadataBuilder(project, "src/example").generate_metadata()
 
 
-def test_absolute_package_directory_is_staged_as_relative(project):
+def test_absolute_package_directory_is_staged_as_relative(project: Path) -> None:
     metadata = MetadataBuilder(project, project / "src/example")
     assert metadata.package_dirs == [Path("src/example")]
 
 
-def test_automatic_commands_and_explicit_overrides(project, monkeypatch):
+def test_automatic_commands_and_explicit_overrides(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from setuptools import Distribution
     from setuptools.command.build_py import build_py as BaseBuild
 
@@ -189,7 +196,9 @@ def test_automatic_commands_and_explicit_overrides(project, monkeypatch):
     assert custom.cmdclass["build_py"] is BaseBuild
 
 
-def test_unconfigured_project_keeps_commands(tmp_path, monkeypatch):
+def test_unconfigured_project_keeps_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from setuptools import Distribution
 
     monkeypatch.chdir(tmp_path)
@@ -198,7 +207,9 @@ def test_unconfigured_project_keeps_commands(tmp_path, monkeypatch):
     assert "build_py" not in Distribution().cmdclass
 
 
-def test_multiple_packages_preserve_one_baked_payload(project, tmp_path, monkeypatch):
+def test_multiple_packages_preserve_one_baked_payload(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     other = project / "src/other"
     other.mkdir()
     (other / "__init__.py").touch()
@@ -206,7 +217,7 @@ def test_multiple_packages_preserve_one_baked_payload(project, tmp_path, monkeyp
     epochs = iter((100, 200, 300))
     monkeypatch.setattr(metadata, "build_timestamp", lambda: next(epochs))
     destinations = [tmp_path / "first", tmp_path / "second"]
-    metadata.render(destinations)
+    metadata.write_metadata(destinations)
     raw = (destinations[0] / "_git_metadata.json").read_bytes()
     assert raw == (destinations[1] / "_git_metadata.json").read_bytes()
     baked = _loads(raw.decode())
@@ -214,38 +225,40 @@ def test_multiple_packages_preserve_one_baked_payload(project, tmp_path, monkeyp
 
     # A baked resource in any selected package takes precedence over live Git.
     (other / "_git_metadata.json").write_bytes(raw)
-    assert metadata.payload() == baked
+    assert metadata.generate_metadata() == baked
     conflicting = dict(baked, BUILD_GIT_BRANCH="conflicting")
     (project / "src/example/_git_metadata.json").write_text(
         json.dumps(conflicting), encoding="utf-8"
     )
     with pytest.raises(ValueError, match="between packages"):
-        metadata.payload()
+        metadata.generate_metadata()
 
 
-def test_git_abbreviation_can_expand_and_remain_baked(project, tmp_path, monkeypatch):
+def test_git_abbreviation_can_expand_and_remain_baked(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     metadata = MetadataBuilder(project, "src/example")
     git = metadata.git
     full = git("rev-parse", "HEAD")
 
-    def extended_abbreviation(*args):
+    def extended_abbreviation(*args: str) -> str:
         if args == ("rev-parse", "--short=8", full):
             return git("rev-parse", "--short=12", full)
         return git(*args)
 
     monkeypatch.setattr(metadata, "git", extended_abbreviation)
-    metadata.render(tmp_path / "source")
+    metadata.write_metadata(tmp_path / "source")
     data = _loads((tmp_path / "source/_git_metadata.json").read_text(encoding="utf-8"))
     assert data["BUILD_GIT_HASH_SHORT"] == full[:12]
     (project / "src/example/_git_metadata.json").write_text(json.dumps(data), encoding="utf-8")
 
-    def no_git(*args):
+    def no_git(*args: str) -> typing.NoReturn:
         raise AssertionError(f"Baked metadata must bypass Git: {args}")
 
     monkeypatch.setattr(metadata, "git", no_git)
-    metadata.render(tmp_path / "wheel", wheel=True)
+    metadata.write_metadata(tmp_path / "wheel", wheel=True)
     rebuilt = _loads((tmp_path / "wheel/_git_metadata.json").read_text(encoding="utf-8"))
     assert rebuilt["BUILD_GIT_HASH_SHORT"] == full[:12]
     for invalid in (full[:7], full + "0", ("0" if full[0] != "0" else "1") + full[1:]):
         with pytest.raises(ValueError, match="short hash"):
-            _validate(dict(data, BUILD_GIT_HASH_SHORT=invalid))
+            _validate_metadata(dict(data, BUILD_GIT_HASH_SHORT=invalid))

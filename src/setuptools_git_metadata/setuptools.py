@@ -1,12 +1,15 @@
 """Activate staged metadata commands for configured setuptools projects."""
 
 from pathlib import Path
+from collections.abc import Iterable
+from typing import cast
+from setuptools import Command, Distribution
 from setuptools.command.build_py import build_py as BaseBuild
 from setuptools.command.sdist import sdist as BaseSdist
 from .build import MetadataBuilder, tomllib
 
 
-def activate(distribution):
+def activate(distribution: Distribution) -> None:
     """Register command adapters only when this project opts in."""
     path = Path("pyproject.toml")
     if not path.is_file():
@@ -17,12 +20,16 @@ def activate(distribution):
         distribution.cmdclass.setdefault("sdist", sdist)
 
 
-def resolve_project(command):
+def resolve_project(command: Command) -> tuple[list[str], MetadataBuilder]:
     """Resolve selected setuptools packages and their shared source metadata."""
     root = Path.cwd()
     config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     settings = config.get("tool", {}).get("setuptools-git-metadata", {})
-    build = command if isinstance(command, BaseBuild) else command.get_finalized_command("build_py")
+    build = (
+        command
+        if isinstance(command, BaseBuild)
+        else cast(BaseBuild, command.get_finalized_command("build_py"))
+    )
     declared = build.packages or []
     if "package" in settings and "packages" in settings:
         raise ValueError("configure either package or packages, not both")
@@ -41,7 +48,7 @@ def resolve_project(command):
 class build_py(BaseBuild):  # pylint: disable=invalid-name
     """Add shared metadata to each selected package in the wheel staging tree."""
 
-    def run(self):
+    def run(self) -> None:
         """Build package files and stage metadata for regular installations."""
         packages, metadata = resolve_project(self)
         metadata.validate_configuration()
@@ -50,16 +57,16 @@ class build_py(BaseBuild):  # pylint: disable=invalid-name
             directories = [
                 Path(self.build_lib).joinpath(*package.split(".")) for package in packages
             ]
-            metadata.render(directories, wheel=True)
+            metadata.write_metadata(directories, wheel=True)
 
 
 class sdist(BaseSdist):  # pylint: disable=invalid-name
     """Include shared metadata in the selected packages of a source archive."""
 
-    def make_release_tree(self, base_dir, files):
+    def make_release_tree(self, base_dir: str, files: Iterable[str]) -> None:
         """Populate the release tree before adding baked metadata."""
         _, metadata = resolve_project(self)
         metadata.validate_configuration()
         super().make_release_tree(base_dir, files)
         if metadata.package_dirs:
-            metadata.render([Path(base_dir) / path for path in metadata.package_dirs])
+            metadata.write_metadata([Path(base_dir) / path for path in metadata.package_dirs])
