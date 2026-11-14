@@ -1,0 +1,103 @@
+"""Representative setuptools consumers for artifact and source-cleanliness tests."""
+
+import hashlib
+from pathlib import Path
+import subprocess
+import sys
+
+import pytest
+
+from importlib import resources
+
+
+def standard_template() -> str:
+    """Read the committed runtime used to create representative consumer packages."""
+    return (
+        resources.files("setuptools_git_metadata")
+        .joinpath("_version.py")
+        .read_text(encoding="utf-8")
+    )
+
+
+@pytest.fixture
+def project(tmp_path: Path) -> Path:
+    """Create a committed src-layout consumer with custom loader text and package data.
+
+    Pytest supplies tmp_path as a unique pathlib.Path temporary directory for each test.
+    """
+    root = tmp_path / "consumer"
+    package = root / "src/example"
+    package.mkdir(parents=True)
+    (root / "pyproject.toml").write_text(
+        """[build-system]
+requires = ["setuptools>=80", "setuptools-git-metadata"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "metadata-example"
+version = "1.2.3"
+[tool.setuptools.packages.find]
+where = ["src"]
+[tool.setuptools.package-data]
+example = ["data.txt", "py.typed"]
+[tool.setuptools-git-metadata]
+""",
+        encoding="utf-8",
+    )
+    (root / "README.md").write_text("Example package\n", encoding="utf-8")
+    (root / "MANIFEST.in").write_text("include README.md\nexclude excluded.txt\n", encoding="utf-8")
+    (root / ".gitignore").write_text(
+        "build/\ndist/\n*.egg-info/\n__pycache__/\nignored.txt\n", encoding="utf-8"
+    )
+    (root / "excluded.txt").write_text("excluded", encoding="utf-8")
+    (root / "ignored.txt").write_text("ignored", encoding="utf-8")
+    loader = standard_template() + '\nCUSTOM_DISPLAY = "application-owned"\n'
+    (package / "_version.py").write_bytes(loader.replace("\n", "\r\n").encode("utf-8"))
+    (package / "__init__.py").write_text("from ._version import BUILD_INFO\n", encoding="utf-8")
+    (package / "data.txt").write_text("package data", encoding="utf-8")
+    (package / "py.typed").touch()
+    for args in [
+        ("init", "-b", "main"),
+        ("config", "user.name", "Fixture"),
+        ("config", "user.email", "fixture@example.invalid"),
+        ("add", "."),
+        ("commit", "-m", "fixture"),
+        ("tag", "v9.9.9"),
+    ]:
+        subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+    return root
+
+
+def run(root: Path, *args: str, env: dict[str, str] | None = None) -> str:
+    """Run a command and include its captured output in assertion failures."""
+    result = subprocess.run(args, cwd=root, env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return result.stdout
+
+
+def build(root: Path, out: Path, kind: str, env: dict[str, str] | None = None) -> Path:
+    """Build a consumer using the backend already installed in the test environment."""
+    run(
+        root,
+        sys.executable,
+        "-m",
+        "build",
+        "--no-isolation",
+        "--outdir",
+        str(out),
+        "--" + kind,
+        env=env,
+    )
+    return next(out.glob("*.whl" if kind == "wheel" else "*.tar.gz"))
+
+
+def inventory(root: Path) -> dict[str, str]:
+    """Include ignored/untracked source; separate ordinary backend output paths."""
+    return {
+        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in Path(root).rglob("*")
+        if path.is_file()
+        and not any(
+            part in (".git", "build", "dist", "__pycache__") or part.endswith(".egg-info")
+            for part in path.relative_to(root).parts
+        )
+    }
