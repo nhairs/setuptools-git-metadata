@@ -21,12 +21,16 @@ def standard_template() -> str:
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
+    """Create a committed src-layout consumer with custom loader text and package data.
+
+    Pytest supplies tmp_path as a unique pathlib.Path temporary directory for each test.
+    """
     root = tmp_path / "consumer"
     package = root / "src/example"
     package.mkdir(parents=True)
     (root / "pyproject.toml").write_text(
         """[build-system]
-requires = ["setuptools>=80"]
+requires = ["setuptools>=80", "setuptools-git-metadata"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "metadata-example"
@@ -64,12 +68,14 @@ example = ["data.txt", "py.typed"]
 
 
 def run(root: Path, *args: str, env: dict[str, str] | None = None) -> str:
+    """Run a command and include its captured output in assertion failures."""
     result = subprocess.run(args, cwd=root, env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return result.stdout
 
 
 def build(root: Path, out: Path, kind: str, env: dict[str, str] | None = None) -> Path:
+    """Build a consumer using the backend already installed in the test environment."""
     run(
         root,
         sys.executable,

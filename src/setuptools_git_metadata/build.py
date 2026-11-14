@@ -39,6 +39,8 @@ class MetadataBuilder:
                 raise ValueError("package directory must be inside source tree")
             self.package_dirs.append(resolved.relative_to(self.root))
 
+        return
+
     def git(self, *args: str) -> str:
         """Run a Git query in the source root and return stripped text."""
         return subprocess.check_output(
@@ -124,11 +126,13 @@ class MetadataBuilder:
                     )
             return bool(relevant), digest.hexdigest()
 
-    def validate_baked(self, data: dict[str, object], version: str) -> None:
+    def validate_baked_metadata(self, data: dict[str, object], version: str) -> None:
         """Validate baked metadata against the declared project version."""
-        _validate_metadata(data)
+        validate_metadata(data)
         if data["PACKAGE_VERSION"] != version:
             raise ValueError("baked version disagrees with project.version")
+
+        return
 
     def validate_configuration(self) -> str:
         """Return the authoritative static version or reject unsupported settings."""
@@ -151,7 +155,7 @@ class MetadataBuilder:
             baked = self.root / package_dir / "_git_metadata.json"
             if baked.exists():
                 candidate = _loads(baked.read_text(encoding="utf-8"))
-                self.validate_baked(candidate, version)
+                self.validate_baked_metadata(candidate, version)
                 if data is not None and candidate != data:
                     raise ValueError("baked metadata disagrees between packages")
                 data = candidate
@@ -199,13 +203,15 @@ class MetadataBuilder:
         else:
             data.setdefault("SDIST_BUILD_TIMESTAMP", None)
         data["schema_version"] = _SCHEMA_VERSION
-        _validate_metadata(data)
+        validate_metadata(data)
         if isinstance(directories, Path):
             directories = [directories]
         content = json.dumps(data, sort_keys=True)
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
             self.atomic_write(directory / "_git_metadata.json", content)
+
+        return
 
     @staticmethod
     def atomic_write(path: Path, content: str) -> None:
@@ -225,6 +231,8 @@ class MetadataBuilder:
         finally:
             temporary.unlink(missing_ok=True)
 
+        return
+
     @staticmethod
     def build_timestamp() -> int:
         """Return the current artifact epoch, respecting SOURCE_DATE_EPOCH."""
@@ -236,9 +244,9 @@ class MetadataBuilder:
         return int(raw)
 
 
-# Exact JSON types deliberately reject bool masquerading as an integer.
-def _validate_metadata(data: object) -> dict[str, object]:  # pylint: disable=too-many-branches
+def validate_metadata(data: object) -> dict[str, object]:  # pylint: disable=too-many-branches
     """Validate the complete metadata schema and return the original mapping."""
+    # Exact JSON types deliberately reject bool masquerading as an integer.
     if (
         not isinstance(data, dict)
         or (
@@ -308,6 +316,6 @@ def _reject_constant(value: str) -> NoReturn:
 
 def _loads(raw: str) -> dict[str, object]:
     """Parse strict JSON and validate its provenance payload."""
-    return _validate_metadata(
+    return validate_metadata(
         json.loads(raw, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
     )

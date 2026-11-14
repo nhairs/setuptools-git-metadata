@@ -16,9 +16,8 @@ __all__ = ["GitMetadata", "BUILD_INFO"]
 class GitMetadata:  # pylint: disable=too-many-instance-attributes
     """Version and Git information recorded when a distribution was built."""
 
-    # Frozen fields and properties use the constant names exposed by BUILD_INFO.
     # pylint: disable=invalid-name
-    _schema_version: typing.ClassVar[int] = _SCHEMA_VERSION
+    schema_version: int = _SCHEMA_VERSION
     PACKAGE_VERSION: str = _METADATA_MISSING
     BUILD_VERSION: str = _METADATA_MISSING
     BUILD_GIT_HASH: str = _METADATA_MISSING
@@ -31,6 +30,7 @@ class GitMetadata:  # pylint: disable=too-many-instance-attributes
     BUILD_TIMESTAMP: int = 0
     SDIST_BUILD_TIMESTAMP: typing.Optional[int] = None
     WHEEL_BUILD_TIMESTAMP: typing.Optional[int] = None
+    # pylint: enable=invalid-name
 
     @classmethod
     # Once the copied runtime requires Python 3.11+, use typing.Self here.
@@ -69,29 +69,29 @@ class GitMetadata:  # pylint: disable=too-many-instance-attributes
         return cls(**values)
 
     @property
-    def BUILD_DATETIME(self) -> datetime.datetime:
+    def BUILD_DATETIME(self) -> datetime.datetime:  # pylint: disable=invalid-name
         """Return the build time as a UTC-naive datetime."""
         return datetime.datetime.fromtimestamp(self.BUILD_TIMESTAMP, datetime.timezone.utc).replace(
             tzinfo=None
         )
 
     @property
-    def VERSION_INFO_SHORT(self) -> str:
+    def VERSION_INFO_SHORT(self) -> str:  # pylint: disable=invalid-name
         """Brief text for compact displays. Edit this single-line template for your needs."""
         return self.BUILD_VERSION
 
     @property
-    def VERSION_INFO(self) -> str:
+    def VERSION_INFO(self) -> str:  # pylint: disable=invalid-name
         """Text for routine output. Edit this single-line template for your needs."""
         return f"{self.BUILD_VERSION}@{self.BUILD_GIT_HASH_SHORT}"
 
     @property
-    def VERSION_INFO_LONG(self) -> str:
+    def VERSION_INFO_LONG(self) -> str:  # pylint: disable=invalid-name
         """Expanded text for diagnostics. Edit this single-line template for your needs."""
         return f"{self.BUILD_VERSION} ({self.BUILD_GIT_BRANCH}@{self.BUILD_GIT_HASH_SHORT})"
 
     @property
-    def VERSION_INFO_FULL(self) -> str:
+    def VERSION_INFO_FULL(self) -> str:  # pylint: disable=invalid-name
         """Detailed text for reports. Edit this multi-line template for your needs."""
         return (
             f"{self.PACKAGE_VERSION} ({self.BUILD_VERSION})\n"
@@ -99,5 +99,4 @@ class GitMetadata:  # pylint: disable=too-many-instance-attributes
         )
 
 
-# pylint: enable=invalid-name
 BUILD_INFO: typing.Final[GitMetadata] = GitMetadata.from_package(__package__)

@@ -18,6 +18,8 @@ def main() -> None:
     if args.command == "template":
         write_template(args, parser)
 
+    return
+
 
 def write_template(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     """Write the selected template to stdout or a new file."""
@@ -30,6 +32,8 @@ def write_template(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
                 stream.write(content)
         except OSError as error:
             parser.error(str(error))
+
+    return
 
 
 if __name__ == "__main__":

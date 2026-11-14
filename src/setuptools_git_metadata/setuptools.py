@@ -19,6 +19,8 @@ def activate(distribution: Distribution) -> None:
         distribution.cmdclass.setdefault("build_py", build_py)
         distribution.cmdclass.setdefault("sdist", sdist)
 
+    return
+
 
 def resolve_project(command: Command) -> tuple[list[str], MetadataBuilder]:
     """Resolve selected setuptools packages and their shared source metadata."""
@@ -59,6 +61,8 @@ class build_py(BaseBuild):  # pylint: disable=invalid-name
             ]
             metadata.write_metadata(directories, wheel=True)
 
+        return
+
 
 class sdist(BaseSdist):  # pylint: disable=invalid-name
     """Include shared metadata in the selected packages of a source archive."""
@@ -70,3 +74,5 @@ class sdist(BaseSdist):  # pylint: disable=invalid-name
         super().make_release_tree(base_dir, files)
         if metadata.package_dirs:
             metadata.write_metadata([Path(base_dir) / path for path in metadata.package_dirs])
+
+        return
