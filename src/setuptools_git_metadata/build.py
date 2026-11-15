@@ -1,6 +1,5 @@
 """Collect and stage static version metadata without editing package sources."""
 
-import hashlib
 import io
 import json
 import shutil
@@ -47,8 +46,8 @@ class MetadataBuilder:
             ["git", *args], cwd=self.root, text=True, stderr=subprocess.DEVNULL, timeout=30
         ).strip()
 
-    def selected_dirty(self) -> tuple[bool, str]:  # pylint: disable=too-many-locals
-        """Return selected-source dirtiness and its digest.
+    def selected_dirty(self) -> bool:  # pylint: disable=too-many-locals
+        """Return whether selected distribution inputs differ from HEAD.
 
         Compare working files with fresh setuptools source lists for both the current
         checkout and HEAD, using the current build configuration for each. Including
@@ -113,22 +112,13 @@ class MetadataBuilder:
                 output = subprocess.check_output(["git", *args, "-z"], cwd=self.root)
                 return {os.fsdecode(p) for p in output.split(b"\0") if p}
 
-            ### Identify selected changes and hash all selected file contents
+            ### Identify changes among the selected distribution inputs
             changed = git_paths("diff", "--name-only", "--relative", "HEAD")
             changed |= git_paths("ls-files", "--others", "--exclude-standard")
             for path in paths:
                 if not (self.root / path).resolve().is_relative_to(self.root):
                     raise ValueError("selected source input escapes project root")
-            relevant = sorted(paths & changed)
-            digest = hashlib.sha256()
-            for path in sorted(paths):
-                if (self.root / path).is_file():
-                    digest.update(
-                        path.encode()
-                        + b"\0"
-                        + hashlib.sha256((self.root / path).read_bytes()).digest()
-                    )
-            return bool(relevant), digest.hexdigest()
+            return bool(paths & changed)
 
     def validate_baked_metadata(self, data: dict[str, object], version: str) -> None:
         """Validate baked metadata against the declared project version."""
@@ -179,9 +169,9 @@ class MetadataBuilder:
             commit_time = int(self.git("show", "-s", "--format=%ct", "HEAD"))
         except (subprocess.CalledProcessError, FileNotFoundError):
             full, short, branch, commit_time = None, None, None, None
-            dirty, source_digest = None, None
+            dirty = None
         else:
-            dirty, source_digest = self.selected_dirty()
+            dirty = self.selected_dirty()
         return {
             "PACKAGE_VERSION": version,
             "BUILD_VERSION": version,
@@ -190,8 +180,6 @@ class MetadataBuilder:
             "BUILD_GIT_BRANCH": branch,
             "BUILD_GIT_COMMIT_TIMESTAMP": commit_time,
             "BUILD_GIT_DIRTY": dirty,
-            # Fingerprint selected source paths and bytes, including uncommitted edits.
-            "SELECTED_SOURCE_DIGEST": source_digest,
             "BUILD_TIMESTAMP": timestamp,
             "SOURCE_TIMESTAMP": timestamp,
         }
@@ -280,14 +268,13 @@ def validate_metadata(data: object) -> dict[str, object]:  # pylint: disable=too
             continue
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise ValueError(key + " must be a nonnegative integer or permitted null")
-    for key, sizes in (("BUILD_GIT_HASH", (40, 64)), ("SELECTED_SOURCE_DIGEST", (64,))):
-        value = data[key]
-        if value is not None and (
-            not isinstance(value, str)
-            or len(value) not in sizes
-            or any(c not in "0123456789abcdef" for c in value)
-        ):
-            raise ValueError("invalid " + key)
+    value = data["BUILD_GIT_HASH"]
+    if value is not None and (
+        not isinstance(value, str)
+        or len(value) not in (40, 64)
+        or any(c not in "0123456789abcdef" for c in value)
+    ):
+        raise ValueError("invalid BUILD_GIT_HASH")
     full = cast(str | None, data["BUILD_GIT_HASH"])
     short = data["BUILD_GIT_HASH_SHORT"]
     valid_short = short is None

@@ -25,7 +25,6 @@ class GitMetadata:  # pylint: disable=too-many-instance-attributes
     BUILD_GIT_BRANCH: typing.Optional[str] = None
     BUILD_GIT_DIRTY: typing.Optional[bool] = None
     BUILD_GIT_COMMIT_TIMESTAMP: typing.Optional[int] = None
-    SELECTED_SOURCE_DIGEST: str = _METADATA_MISSING
     SOURCE_TIMESTAMP: int = 0
     BUILD_TIMESTAMP: int = 0
     SDIST_BUILD_TIMESTAMP: typing.Optional[int] = None

@@ -117,6 +117,7 @@ def test_typed_metadata_defaults_and_properties() -> None:
     """Check model defaults, computed display properties and frozen state."""
     ### Defaults and computed display values
     info = GitMetadata()
+    assert not hasattr(info, "SELECTED_SOURCE_DIGEST")
     assert info.PACKAGE_VERSION == info.BUILD_GIT_HASH
     assert info.BUILD_GIT_HASH == "__metadata_missing__"
     assert info.BUILD_GIT_BRANCH is info.BUILD_GIT_DIRTY

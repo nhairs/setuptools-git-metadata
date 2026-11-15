@@ -71,7 +71,6 @@ Without generated metadata, string fields use `__metadata_missing__` and source/
 | `BUILD_GIT_BRANCH` | Branch name, or `None` when unavailable |
 | `BUILD_GIT_DIRTY` | Whether selected source inputs have changed |
 | `BUILD_GIT_COMMIT_TIMESTAMP` | Git commit time |
-| `SELECTED_SOURCE_DIGEST` | Digest of the selected source inputs |
 | `SOURCE_TIMESTAMP` | Original source metadata time |
 | `SDIST_BUILD_TIMESTAMP` | Original source distribution build time |
 | `WHEEL_BUILD_TIMESTAMP` | Wheel build time |

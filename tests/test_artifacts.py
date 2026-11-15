@@ -93,7 +93,6 @@ def test_wheel_sdist_gitless_roundtrip(project: Path, tmp_path: Path) -> None:
         "BUILD_GIT_BRANCH",
         "BUILD_GIT_DIRTY",
         "BUILD_GIT_COMMIT_TIMESTAMP",
-        "SELECTED_SOURCE_DIGEST",
         "SOURCE_TIMESTAMP",
         "SDIST_BUILD_TIMESTAMP",
     ):

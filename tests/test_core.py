@@ -45,7 +45,7 @@ def test_selected_source_changes(project: Path) -> None:
     template.write_bytes(template.read_bytes() + b'\nCUSTOM = "changed"\n')
     changed = metadata.generate_metadata()
     assert changed["BUILD_GIT_DIRTY"] is True
-    assert changed["SELECTED_SOURCE_DIGEST"] != original["SELECTED_SOURCE_DIGEST"]
+    assert "SELECTED_SOURCE_DIGEST" not in changed
     assert "ignored.txt" in before  # Ignored source is actually inventoried.
 
     return
