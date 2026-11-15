@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=80", "tomli>=2; python_version < '3.11'"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "setuptools-git-metadata"
+version = "0.1.0.dev0"
+description = "Bake Git provenance into setuptools distributions without editing package sources"
+authors = [{name = "Nicholas Hairs", email = "info+setuptools-git-metadata@nicholashairs.com"}]
+requires-python = ">=3.10"
+dependencies = [
+    "setuptools>=80",
+    "tomli>=2; python_version < '3.11'",
+]
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENCE"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: Software Development :: Build Tools",
+]
+
+[project.entry-points."setuptools.finalize_distribution_options"]
+setuptools_git_metadata = "setuptools_git_metadata.setuptools:activate"
+
+[project.urls]
+GitHub = "https://github.com/nhairs/setuptools-git-metadata"
+
+[dependency-groups]
+dev = [
+    "validate-pyproject[all]",
+    "black",
+    "pylint",
+    "pyrefly",
+    "pytest",
+    "build",
+    "setuptools>=80",
+    "packaging",
+    "tomli>=2",
+    "uv",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["setuptools_git_metadata*"]
+
+[tool.setuptools-git-metadata]
+
+[tool.black]
+line-length = 100
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.messages_control]
+disable = ["useless-return"]
