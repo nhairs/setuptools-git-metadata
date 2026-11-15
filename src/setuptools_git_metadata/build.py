@@ -54,6 +54,7 @@ class MetadataBuilder:
         checkout and HEAD, using the current build configuration for each. Including
         both lists detects deleted inputs as well as newly selected files.
         """
+        ### Reject filenames that the line-based source manifest cannot represent
         all_git_paths = subprocess.check_output(
             ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
             cwd=self.root,
@@ -64,6 +65,7 @@ class MetadataBuilder:
                 "newline filenames cannot be represented safely by setuptools manifests"
             )
 
+        ### Collect distribution inputs using fresh setuptools manifests
         generated = {(path / "_git_metadata.json").as_posix() for path in self.package_dirs}
 
         def selected(root: Path) -> set[str]:
@@ -91,6 +93,7 @@ class MetadataBuilder:
                     if ".egg-info/" not in p and p not in generated and (root / p).is_file()
                 }
 
+        ### Compare HEAD and working sources under the current build configuration
         with tempfile.TemporaryDirectory() as td:
             head = Path(td) / "head"
             head.mkdir()
@@ -110,6 +113,7 @@ class MetadataBuilder:
                 output = subprocess.check_output(["git", *args, "-z"], cwd=self.root)
                 return {os.fsdecode(p) for p in output.split(b"\0") if p}
 
+            ### Identify selected changes and hash all selected file contents
             changed = git_paths("diff", "--name-only", "--relative", "HEAD")
             changed |= git_paths("ls-files", "--others", "--exclude-standard")
             for path in paths:
@@ -186,6 +190,7 @@ class MetadataBuilder:
             "BUILD_GIT_BRANCH": branch,
             "BUILD_GIT_COMMIT_TIMESTAMP": commit_time,
             "BUILD_GIT_DIRTY": dirty,
+            # Fingerprint selected source paths and bytes, including uncommitted edits.
             "SELECTED_SOURCE_DIGEST": source_digest,
             "BUILD_TIMESTAMP": timestamp,
             "SOURCE_TIMESTAMP": timestamp,

@@ -19,7 +19,8 @@ def test_selected_source_changes(project: Path) -> None:
     metadata = MetadataBuilder(project, "src/example")
     before = inventory(project)
     original = metadata.generate_metadata()
-    assert original["PACKAGE_VERSION"] == original["BUILD_VERSION"] == "1.2.3"
+    assert original["PACKAGE_VERSION"] == original["BUILD_VERSION"]
+    assert original["BUILD_VERSION"] == "1.2.3"
     full_hash = original["BUILD_GIT_HASH"]
     assert isinstance(full_hash, str)
     assert len(full_hash) == 40
@@ -134,14 +135,17 @@ def test_baked_priority_and_epoch_zero(
     monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
     metadata.write_metadata(tmp_path / "first")
     baked = _loads((tmp_path / "first/_git_metadata.json").read_text(encoding="utf-8"))
-    assert baked["BUILD_GIT_DIRTY"] is False and baked["SOURCE_TIMESTAMP"] == 0
+    assert baked["BUILD_GIT_DIRTY"] is False
+    assert baked["SOURCE_TIMESTAMP"] == 0
     (project / "src/example/_git_metadata.json").write_text(json.dumps(baked), encoding="utf-8")
     ### Refresh the wheel event while preserving baked source data
     monkeypatch.setenv("SOURCE_DATE_EPOCH", "100")
     metadata.write_metadata(tmp_path / "wheel", wheel=True)
     rebuilt = _loads((tmp_path / "wheel/_git_metadata.json").read_text(encoding="utf-8"))
-    assert rebuilt["SOURCE_TIMESTAMP"] == rebuilt["SDIST_BUILD_TIMESTAMP"] == 0
-    assert rebuilt["BUILD_TIMESTAMP"] == rebuilt["WHEEL_BUILD_TIMESTAMP"] == 100
+    assert rebuilt["SOURCE_TIMESTAMP"] == rebuilt["SDIST_BUILD_TIMESTAMP"]
+    assert rebuilt["SDIST_BUILD_TIMESTAMP"] == 0
+    assert rebuilt["BUILD_TIMESTAMP"] == rebuilt["WHEEL_BUILD_TIMESTAMP"]
+    assert rebuilt["WHEEL_BUILD_TIMESTAMP"] == 100
     assert rebuilt["BUILD_GIT_HASH"] == baked["BUILD_GIT_HASH"]
     ### Reject a declared-version conflict
     with pytest.raises(ValueError, match="baked version"):
@@ -285,7 +289,8 @@ def test_multiple_packages_preserve_one_baked_payload(
     raw = (destinations[0] / "_git_metadata.json").read_bytes()
     assert raw == (destinations[1] / "_git_metadata.json").read_bytes()
     baked = _loads(raw.decode())
-    assert baked["SOURCE_TIMESTAMP"] == baked["BUILD_TIMESTAMP"] == 100
+    assert baked["SOURCE_TIMESTAMP"] == baked["BUILD_TIMESTAMP"]
+    assert baked["BUILD_TIMESTAMP"] == 100
 
     ### Read the existing payload from either package
     # A baked resource in any selected package takes precedence over live Git.
@@ -335,5 +340,25 @@ def test_git_abbreviation_can_expand_and_remain_baked(
     for invalid in (full[:7], full + "0", ("0" if full[0] != "0" else "1") + full[1:]):
         with pytest.raises(ValueError, match="short hash"):
             validate_metadata(dict(data, BUILD_GIT_HASH_SHORT=invalid))
+
+    return
+
+
+def test_singular_package_setting_is_rejected(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reject the removed PR-only spelling instead of silently selecting all packages."""
+    from setuptools import Distribution
+    from setuptools_git_metadata.setuptools import resolve_project
+
+    monkeypatch.chdir(project)
+    config = project / "pyproject.toml"
+    config.write_text(
+        config.read_text(encoding="utf-8") + 'package = "example"\n', encoding="utf-8"
+    )
+    command = Distribution().get_command_obj("build_py")
+    command.ensure_finalized()
+    with pytest.raises(ValueError, match="use packages"):
+        resolve_project(command)
 
     return

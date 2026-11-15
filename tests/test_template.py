@@ -100,7 +100,7 @@ def test_zip_resource_import(project: Path, tmp_path: Path) -> None:
         [
             sys.executable,
             "-c",
-            "import example; assert example.BUILD_INFO.PACKAGE_VERSION == '1.2.3'",
+            "import example, json; print(json.dumps(example.BUILD_INFO.PACKAGE_VERSION))",
         ],
         cwd=tmp_path,
         env=env,
@@ -108,6 +108,7 @@ def test_zip_resource_import(project: Path, tmp_path: Path) -> None:
         text=True,
     )
     assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == "1.2.3"
 
     return
 
@@ -116,10 +117,14 @@ def test_typed_metadata_defaults_and_properties() -> None:
     """Check model defaults, computed display properties and frozen state."""
     ### Defaults and computed display values
     info = GitMetadata()
-    assert info.PACKAGE_VERSION == info.BUILD_GIT_HASH == "__metadata_missing__"
-    assert info.BUILD_GIT_BRANCH is info.BUILD_GIT_DIRTY is None
-    assert info.SDIST_BUILD_TIMESTAMP is info.WHEEL_BUILD_TIMESTAMP is None
-    assert info.BUILD_TIMESTAMP == info.SOURCE_TIMESTAMP == 0
+    assert info.PACKAGE_VERSION == info.BUILD_GIT_HASH
+    assert info.BUILD_GIT_HASH == "__metadata_missing__"
+    assert info.BUILD_GIT_BRANCH is info.BUILD_GIT_DIRTY
+    assert info.BUILD_GIT_DIRTY is None
+    assert info.SDIST_BUILD_TIMESTAMP is info.WHEEL_BUILD_TIMESTAMP
+    assert info.WHEEL_BUILD_TIMESTAMP is None
+    assert info.BUILD_TIMESTAMP == info.SOURCE_TIMESTAMP
+    assert info.SOURCE_TIMESTAMP == 0
     assert info.VERSION_INFO_SHORT == info.BUILD_VERSION
     assert info.VERSION_INFO == f"{info.BUILD_VERSION}@{info.BUILD_GIT_HASH_SHORT}"
     assert str(info.BUILD_DATETIME) == "1970-01-01 00:00:00"

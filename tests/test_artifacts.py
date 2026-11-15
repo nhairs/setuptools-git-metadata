@@ -36,7 +36,7 @@ def environment_python(root: Path) -> Path:
 
 
 def install(wheel: Path, root: Path) -> Path:
-    """Install a wheel in a fresh environment without the companion runtime dependency."""
+    """Install a wheel in a fresh environment without the plugin runtime dependency."""
     venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt").create(root)
     python = environment_python(root)
     subprocess.run(
@@ -66,10 +66,12 @@ def test_wheel_sdist_gitless_roundtrip(project: Path, tmp_path: Path) -> None:
     unpacked.mkdir()
     with tarfile.open(sdist) as archive:
         archive.extractall(unpacked, filter="data")
-    source = next(unpacked.iterdir())
+    # The sdist contains one top-level directory named from the project and version.
+    (source,) = unpacked.iterdir()
     assert (source / "src/example/_version.py").read_bytes() == original
     frozen = _loads((source / "src/example/_git_metadata.json").read_text(encoding="utf-8"))
-    assert frozen["SOURCE_TIMESTAMP"] == frozen["SDIST_BUILD_TIMESTAMP"] == 200
+    assert frozen["SOURCE_TIMESTAMP"] == frozen["SDIST_BUILD_TIMESTAMP"]
+    assert frozen["SDIST_BUILD_TIMESTAMP"] == 200
     ### Rebuild outside Git
     ## Remove build environment inputs
     clean_env = {
@@ -96,7 +98,8 @@ def test_wheel_sdist_gitless_roundtrip(project: Path, tmp_path: Path) -> None:
         "SDIST_BUILD_TIMESTAMP",
     ):
         assert data[field] == frozen[field], field
-    assert data["BUILD_TIMESTAMP"] == data["WHEEL_BUILD_TIMESTAMP"] == 300
+    assert data["BUILD_TIMESTAMP"] == data["WHEEL_BUILD_TIMESTAMP"]
+    assert data["WHEEL_BUILD_TIMESTAMP"] == 300
     assert loader == original
     ## Check original source bytes and generated-file absence
     assert inventory(project) == before
@@ -112,12 +115,11 @@ def test_wheel_sdist_gitless_roundtrip(project: Path, tmp_path: Path) -> None:
             """
 import json, sys
 import example._version as v
-assert 'setuptools_git_metadata' not in sys.modules
-print(json.dumps([v.BUILD_INFO.PACKAGE_VERSION, v.BUILD_INFO.BUILD_GIT_HASH, v.BUILD_INFO.BUILD_TIMESTAMP, v.CUSTOM_DISPLAY]))
+print(json.dumps([v.BUILD_INFO.PACKAGE_VERSION, v.BUILD_INFO.BUILD_GIT_HASH, v.BUILD_INFO.BUILD_TIMESTAMP, v.CUSTOM_DISPLAY, 'setuptools_git_metadata' in sys.modules]))
 """,
         )
     )
-    assert imported == ["1.2.3", data["BUILD_GIT_HASH"], 300, "application-owned"]
+    assert imported == ["1.2.3", data["BUILD_GIT_HASH"], 300, "application-owned", False]
 
     ### Repeat the source distribution build
     # Original source and first-sdist timestamps survive another build.
@@ -127,7 +129,8 @@ print(json.dumps([v.BUILD_INFO.PACKAGE_VERSION, v.BUILD_INFO.BUILD_GIT_HASH, v.B
             m for m in archive.getmembers() if m.name.endswith("/src/example/_git_metadata.json")
         )
         repeated = _loads(archive.extractfile(member).read().decode("utf-8"))
-    assert repeated["SDIST_BUILD_TIMESTAMP"] == repeated["SOURCE_TIMESTAMP"] == 200
+    assert repeated["SDIST_BUILD_TIMESTAMP"] == repeated["SOURCE_TIMESTAMP"]
+    assert repeated["SOURCE_TIMESTAMP"] == 200
 
     ### Reject a conflicting declared version
     config = source / "pyproject.toml"
@@ -140,7 +143,8 @@ print(json.dumps([v.BUILD_INFO.PACKAGE_VERSION, v.BUILD_INFO.BUILD_GIT_HASH, v.B
         capture_output=True,
         text=True,
     )
-    assert failure.returncode and "baked version disagrees" in failure.stdout + failure.stderr
+    assert failure.returncode
+    assert "baked version disagrees" in failure.stdout + failure.stderr
 
     return
 
@@ -164,18 +168,22 @@ def test_metadata_preparation_and_editable_placeholders(project: Path, tmp_path:
         assert not any(path.endswith("_git_metadata.json") for path in archive.namelist())
     ### Install and inspect placeholders
     python = install(wheel, tmp_path / "installed-editable")
-    run(
-        tmp_path,
-        str(python),
-        "-c",
-        """
+    imported = json.loads(
+        run(
+            tmp_path,
+            str(python),
+            "-c",
+            """
+import dataclasses, json
 import example._version as v
-assert v.BUILD_INFO.PACKAGE_VERSION == '__metadata_missing__'
-assert v.BUILD_INFO.BUILD_GIT_HASH == '__metadata_missing__'
-assert v.BUILD_INFO.BUILD_TIMESTAMP == 0
-assert v.CUSTOM_DISPLAY == 'application-owned'
+print(json.dumps({"info": dataclasses.asdict(v.BUILD_INFO), "display": v.CUSTOM_DISPLAY}))
 """,
+        )
     )
+    assert imported["info"]["PACKAGE_VERSION"] == "__metadata_missing__"
+    assert imported["info"]["BUILD_GIT_HASH"] == "__metadata_missing__"
+    assert imported["info"]["BUILD_TIMESTAMP"] == 0
+    assert imported["display"] == "application-owned"
     ### Check source cleanliness
     assert inventory(project) == before
 
@@ -193,24 +201,25 @@ def test_unbaked_gitless_local_artifact(project: Path, tmp_path: Path) -> None:
     wheel = build(source, tmp_path / "local", "wheel")
     data, _ = wheel_resource(wheel)
     assert data["PACKAGE_VERSION"] == "1.2.3"
-    assert data["BUILD_GIT_HASH"] is None and data["BUILD_GIT_DIRTY"] is None
+    assert data["BUILD_GIT_HASH"] is None
+    assert data["BUILD_GIT_DIRTY"] is None
 
     return
 
 
-def test_isolated_build_uses_actual_companion_wheel(project: Path, tmp_path: Path) -> None:
-    """Build the companion and load its wheel in a real isolated consumer build."""
-    ### Build the actual companion wheel
+def test_isolated_build_uses_actual_plugin_wheel(project: Path, tmp_path: Path) -> None:
+    """Build setuptools-git-metadata and use its wheel in an isolated consumer build."""
+    ### Build the actual plugin wheel
     repository = Path(__file__).resolve().parents[1]
-    companion = build(repository, tmp_path / "companion", "wheel")
-    with zipfile.ZipFile(companion) as archive:
+    plugin = build(repository, tmp_path / "plugin", "wheel")
+    with zipfile.ZipFile(plugin) as archive:
         own = _loads(archive.read("setuptools_git_metadata/_git_metadata.json").decode())
         assert "setuptools_git_metadata/_version.py" in archive.namelist()
         assert own["BUILD_GIT_HASH"] == run(repository, "git", "rev-parse", "HEAD").strip()
 
     ### Point the consumer at that wheel
     config = project / "pyproject.toml"
-    requirement = "setuptools-git-metadata @ " + companion.as_uri()
+    requirement = "setuptools-git-metadata @ " + plugin.as_uri()
     config.write_text(
         config.read_text(encoding="utf-8").replace(
             'requires = ["setuptools>=80", "setuptools-git-metadata"]',
@@ -220,7 +229,7 @@ def test_isolated_build_uses_actual_companion_wheel(project: Path, tmp_path: Pat
     )
     ### Build with an isolated backend
     # Tox installed setuptools through uv already, so isolate locally from cache.
-    # This does not require network access or ambient companion PYTHONPATH.
+    # This does not require network access or ambient plugin PYTHONPATH.
     env = dict(os.environ, UV_OFFLINE="1")
     env.pop("PYTHONPATH", None)
     output = tmp_path / "isolated-consumer"
@@ -244,20 +253,16 @@ def test_isolated_build_uses_actual_companion_wheel(project: Path, tmp_path: Pat
     return
 
 
-@pytest.mark.parametrize("selected", [None, ["other"], "other"])
+@pytest.mark.parametrize("selected", [None, ["other"]])
 def test_multiple_packages_default_and_subset(
-    project: Path, tmp_path: Path, selected: list[str] | str | None
+    project: Path, tmp_path: Path, selected: list[str] | None
 ) -> None:
     """Select packages and preserve their shared metadata through Gitless rebuilds."""
     ### Setup package selection and additional packages
     config = project / "pyproject.toml"
     if selected is not None:
         config.write_text(
-            config.read_text(encoding="utf-8")
-            + ("package" if isinstance(selected, str) else "packages")
-            + " = "
-            + json.dumps(selected)
-            + "\n",
+            config.read_text(encoding="utf-8") + "packages = " + json.dumps(selected) + "\n",
             encoding="utf-8",
         )
     loader = (project / "src/example/_version.py").read_bytes()
@@ -270,8 +275,6 @@ def test_multiple_packages_default_and_subset(
     run(project, "git", "commit", "-m", "multiple packages")
     before = inventory(project)
     packages = selected if selected is not None else ["example", "example.child", "other"]
-    if isinstance(packages, str):
-        packages = [packages]
     resources = {package.replace(".", "/") + "/_git_metadata.json" for package in packages}
     ### Build a wheel and check the selected package resources
     direct = build(project, tmp_path / "direct", "wheel")
@@ -287,7 +290,8 @@ def test_multiple_packages_default_and_subset(
     unpacked.mkdir()
     with tarfile.open(sdist) as archive:
         archive.extractall(unpacked, filter="data")
-    source = next(unpacked.iterdir())
+    # The sdist contains one top-level directory named from the project and version.
+    (source,) = unpacked.iterdir()
     frozen = {
         package: _loads(
             (source / "src" / package.replace(".", "/") / "_git_metadata.json").read_text(

@@ -33,11 +33,9 @@ def resolve_project(command: Command) -> tuple[list[str], MetadataBuilder]:
         else cast(BaseBuild, command.get_finalized_command("build_py"))
     )
     declared = build.packages or []
-    if "package" in settings and "packages" in settings:
-        raise ValueError("configure either package or packages, not both")
-    packages = settings.get("packages", list(declared))
     if "package" in settings:
-        packages = [settings["package"]]
+        raise ValueError("use packages instead of the unsupported singular package setting")
+    packages = settings.get("packages", list(declared))
     if not isinstance(packages, list) or any(not isinstance(p, str) or not p for p in packages):
         raise ValueError("tool.setuptools-git-metadata.packages must be a list of package names")
     for package in packages:
@@ -68,7 +66,7 @@ class sdist(BaseSdist):  # pylint: disable=invalid-name
     """Include shared metadata in the selected packages of a source archive."""
 
     def make_release_tree(self, base_dir: str, files: Iterable[str]) -> None:
-        """Populate the release tree before adding baked metadata."""
+        """Add metadata to setuptools' temporary release tree, outside the source tree."""
         _, metadata = resolve_project(self)
         metadata.validate_configuration()
         super().make_release_tree(base_dir, files)
