@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "setuptools-git-metadata"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Bake Git provenance into setuptools distributions without editing package sources"
 authors = [{name = "Nicholas Hairs", email = "info+setuptools-git-metadata@nicholashairs.com"}]
 requires-python = ">=3.10"
