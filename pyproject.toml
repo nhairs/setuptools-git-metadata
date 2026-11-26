@@ -55,6 +55,9 @@ include = ["setuptools_git_metadata*"]
 
 [tool.setuptools-git-metadata]
 
+[tool.nopt]
+github-release-publish = false
+
 [tool.black]
 line-length = 100
 
